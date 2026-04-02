@@ -97,20 +97,41 @@ const runtime = new AgentRuntime(agent, {
 await runtime.start(); // Handles SIGTERM/SIGINT gracefully
 ```
 
+## Subpath imports
+
+Import only what you need for smaller bundles:
+
+```typescript
+// Tools only
+import { AgentToolkit, WaveToolError } from '@wave-av/adk/tools';
+
+// Agents only
+import { WaveAgent, AgentRuntime } from '@wave-av/adk/agents';
+
+// Framework adapters only
+import { createMastraTools } from '@wave-av/adk/adapters';
+
+// Agent templates
+import { StreamMonitorAgent, ClipFactoryAgent } from '@wave-av/adk/templates';
+
+// Type definitions
+import type { StreamQualityAlert, ClipHighlight } from '@wave-av/adk/types';
+```
+
 ## Framework adapters
 
 ```typescript
 // Mastra — native TypeScript, MCP-first
-import { createMastraTools } from '@wave-av/adk/adapters/mastra';
+import { createMastraTools } from '@wave-av/adk/adapters';
 
 // LangGraph — LangChain state machines
-import { createLangGraphTools } from '@wave-av/adk/adapters/langgraph';
+import { createLangGraphTools } from '@wave-av/adk/adapters';
 
 // LiveKit Agents — real-time voice/video
-import { createLiveKitWaveTools } from '@wave-av/adk/adapters/livekit';
+import { createLiveKitWaveTools } from '@wave-av/adk/adapters';
 
 // Kernel.sh — cloud browser automation
-import { createKernelTools } from '@wave-av/adk/adapters/kernel';
+import { createKernelTools } from '@wave-av/adk/adapters';
 ```
 
 Or use the MCP server with ANY framework:
@@ -122,8 +143,9 @@ Or use the MCP server with ANY framework:
 
 - **10 MCP tools** — plug into Claude, Cursor, or any MCP client
 - **5 agent templates** — start producing in minutes, not weeks
+- **6 subpath exports** — tree-shake to only what you need
 - **Real infrastructure** — not a wrapper, actual video processing
-- **Usage-based pricing** — free tier included, pay per API call
+- **Usage-based pricing** — pay per API call, plans from $19/month
 - **Enterprise-ready** — multi-region architecture, designed for scale
 
 ## Links
