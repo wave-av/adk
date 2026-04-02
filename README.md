@@ -1,10 +1,14 @@
 # @wave-av/adk — Agent Developer Kit
 
+[![npm version](https://img.shields.io/npm/v/@wave-av/adk.svg)](https://www.npmjs.com/package/@wave-av/adk)
+[![npm downloads](https://img.shields.io/npm/dm/@wave-av/adk.svg)](https://www.npmjs.com/package/@wave-av/adk)
+[![license](https://img.shields.io/npm/l/@wave-av/adk.svg)](https://github.com/wave-av/adk/blob/main/LICENSE)
+
 > **The video layer for AI agents.** Build agents that see, produce, and deliver video.
 
 WAVE ADK is the complete toolkit for AI agents to interact with live video infrastructure. Like Stripe is for payments and Resend is for email — **WAVE is for live streaming and video**.
 
-## Quick Start
+## Quick start
 
 ```bash
 npm install @wave-av/adk
@@ -26,7 +30,32 @@ const monitor = new StreamMonitorAgent({
 await monitor.start();
 ```
 
-## Agent Templates
+## Agent lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Init: new AgentRuntime(agent)
+    Init --> Starting: runtime.start()
+    Starting --> Running: agent registered + health server up
+    Running --> Running: heartbeat every 30s
+    Running --> Stopping: SIGTERM / SIGINT / runtime.stop()
+    Stopping --> [*]: cleanup + flush logs
+
+    state Running {
+        [*] --> Healthy
+        Healthy --> Degraded: quality drop
+        Degraded --> Healthy: auto-remediate
+        Healthy --> Processing: tool invoked
+        Processing --> Healthy: result returned
+    }
+```
+
+**Endpoints while running:**
+- `GET /health` — liveness probe (`{ status: "healthy", uptime: 12345 }`)
+- `GET /ready` — readiness probe (`{ ready: true }`)
+- `GET /metrics` — usage stats (`{ totalCalls: 42, totalDurationMs: 1200 }`)
+
+## Agent templates
 
 | Template | What It Does |
 |----------|-------------|
