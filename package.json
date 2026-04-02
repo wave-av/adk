@@ -1,0 +1,58 @@
+{
+  "name": "@wave-av/adk",
+  "version": "1.0.2",
+  "description": "WAVE Agent Developer Kit — Build AI agents that see, produce, and deliver video",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "wave-adk": "./dist/cli/index.mjs"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "lint": "eslint src/",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "wave",
+    "adk",
+    "agent",
+    "video",
+    "streaming",
+    "mcp",
+    "ai"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wave-av/wave-surfer-connect.git",
+    "directory": "packages/adk"
+  },
+  "homepage": "https://wave.online/developers/adk",
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0"
+  }
+}
