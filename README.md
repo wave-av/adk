@@ -65,7 +65,7 @@ stateDiagram-v2
 | `ModerationAgent` | AI content moderation for chat and video |
 | `CaptionAgent` | Real-time transcription and multi-language captions |
 
-## MCP Tools (10 tools)
+## MCP tools (10 tools)
 
 ```typescript
 import { AgentToolkit } from '@wave-av/adk/tools';
@@ -148,9 +148,31 @@ Or use the MCP server with ANY framework:
 - **Usage-based pricing** — pay per API call, plans from $19/month
 - **Enterprise-ready** — multi-region architecture, designed for scale
 
+## Troubleshooting
+
+### Module not found with subpath imports
+
+Ensure `"moduleResolution": "node16"` or `"nodenext"` in your `tsconfig.json`.
+
+### ESM required error
+
+ADK is ESM-first. Add `"type": "module"` to your `package.json`, or use dynamic imports:
+
+```typescript
+const { AgentToolkit } = await import("@wave-av/adk/tools");
+```
+
+CJS consumers can use `require()` — the package exports `.cjs` files via the `require` condition.
+
+## Related packages
+
+- [@wave-av/sdk](https://www.npmjs.com/package/@wave-av/sdk) — TypeScript SDK (34 API modules)
+- [@wave-av/mcp-server](https://www.npmjs.com/package/@wave-av/mcp-server) — MCP server for AI tools
+- [@wave-av/create-app](https://www.npmjs.com/package/@wave-av/create-app) — Scaffold a new agent project
+- [@wave-av/cli](https://www.npmjs.com/package/@wave-av/cli) — Command-line interface
+
 ## Links
 
-- [Developer Portal](https://wave.online/developers/adk)
-- [API Reference](https://docs.wave.online/adk)
-- [Agent Templates](https://wave.online/developers/adk#templates)
+- [npm package](https://www.npmjs.com/package/@wave-av/adk)
+- [GitHub](https://github.com/wave-av/adk)
 - [Community](https://github.com/wave-av/adk/discussions)
