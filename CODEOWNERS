@@ -1,1 +1,10 @@
-* @wave-av/engineering
+# Code ownership — auto-requests review from owners on matching paths.
+# Complements the AI reviewers with a human routing layer. Added by Sub-Project F (F6).
+# Routed to the SDK fleet owner. (Previously referenced @wave-av/engineering, which does not exist.)
+
+# Default owner
+* @wave-av/core-team
+
+# Governance surfaces — never change without an owner's review.
+/.github/                @wave-av/core-team
+/.foundation-version     @wave-av/core-team
