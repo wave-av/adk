@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "repo": "wave-av/adk",
+  "version": "0.3.0",
+  "lifecycle": "beta",
+  "planeLayer": null,
+  "foundationPin": "v1",
+  "maintainers": [{ "team": "agent-ops" }],
+  "exposes": {
+    "mcpTools": [
+      { "name": "wave_clip_create" },
+      { "name": "wave_caption_extract" },
+      { "name": "wave_chapter_generate" },
+      { "name": "wave_voice_clone" },
+      { "name": "wave_sentiment_analyze" }
+    ]
+  },
+  "consumes": {
+    "waveProducts": [
+      { "repo": "wave-av/wave-gateway" },
+      { "repo": "wave-av/mcp-server" }
+    ],
+    "foundationFrameworks": ["frameworks/platform-registry"]
+  },
+  "tags": ["adk", "public", "agent-developer-kit", "mcp", "10-tools"]
+}
