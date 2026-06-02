@@ -10,25 +10,7 @@
       "team": "agent-ops"
     }
   ],
-  "exposes": {
-    "mcpTools": [
-      {
-        "name": "wave_clip_create"
-      },
-      {
-        "name": "wave_caption_extract"
-      },
-      {
-        "name": "wave_chapter_generate"
-      },
-      {
-        "name": "wave_voice_clone"
-      },
-      {
-        "name": "wave_sentiment_analyze"
-      }
-    ]
-  },
+  "exposes": {},
   "consumes": {
     "waveProducts": [
       {
