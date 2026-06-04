@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1",
+  "repo": "wave-av/adk",
+  "version": "1.0.2",
+  "lifecycle": "beta",
+  "planeLayer": null,
+  "foundationPin": "v1",
+  "maintainers": [
+    {
+      "team": "agent-ops"
+    }
+  ],
+  "exposes": {},
+  "consumes": {
+    "waveProducts": [
+      {
+        "repo": "wave-av/wave-gateway"
+      },
+      {
+        "repo": "wave-av/mcp-server"
+      }
+    ],
+    "foundationFrameworks": [
+      "frameworks/platform-registry"
+    ]
+  },
+  "tags": [
+    "adk",
+    "public",
+    "agent-developer-kit",
+    "mcp",
+    "10-tools"
+  ]
+}
