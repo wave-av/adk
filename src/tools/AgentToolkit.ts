@@ -36,7 +36,7 @@ export class AgentToolkit {
     const streamIdSchema = z.object({ streamId: z.string().uuid() });
     const clipSchema = z.object({ streamId: z.string().uuid(), startTime: z.number().min(0), endTime: z.number().min(0) });
     const switchSchema = z.object({ switcherId: z.string(), sourceId: z.string(), transition: z.enum(['cut', 'mix', 'wipe']).optional() });
-    const graphicSchema = z.object({ switcherId: z.string(), templateId: z.string(), data: z.record(z.unknown()).optional() });
+    const graphicSchema = z.object({ switcherId: z.string(), templateId: z.string(), data: z.record(z.string(), z.unknown()).optional() });
     const moderateSchema = z.object({ messageId: z.string(), action: z.enum(['approve', 'flag', 'block']) });
     const captionSchema = z.object({ streamId: z.string().uuid(), language: z.string().length(2).optional() });
     const analyticsSchema = z.object({ streamId: z.string().uuid(), timeRange: z.enum(['1h', '24h', '7d']).optional() });

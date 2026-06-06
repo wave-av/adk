@@ -19,7 +19,7 @@
     "build": "tsup src/index.ts --format esm,cjs",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
     "lint": "eslint src/ --max-warnings 0",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@types/node": "^22.19.20",
     "eslint": "^9.39.4",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0",
