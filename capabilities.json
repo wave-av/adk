@@ -14,7 +14,7 @@
   "consumes": {
     "waveProducts": [
       {
-        "repo": "wave-av/wave-gateway"
+        "repo": "wave-av/api-gateway"
       },
       {
         "repo": "wave-av/mcp-server"
