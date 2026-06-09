@@ -1,0 +1,21 @@
+package.json
+  s_5f27fa5b8237cd::t_9f5045af25150d 47
+capabilities.json
+  s_5f27fa5b8237cd::t_e4a0138d2c8134 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "20078243c263bd332e560cc78169fffe911823f9",
+  "prompts": {},
+  "sessions": {
+    "s_5f27fa5b8237cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "15ec0bf8-6164-4260-bae1-00c610d449bb",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
