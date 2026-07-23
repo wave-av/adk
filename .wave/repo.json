@@ -1,0 +1,38 @@
+{
+  "kind": "library",
+  "name": "adk",
+  "purpose": "TypeScript SDK (@wave-av/adk on npm) letting AI agents see, produce, and deliver live video via 5 ready-made agent templates, 10 MCP tools, and framework adapters for Mastra/LangGraph/LiveKit/Kernel.sh.",
+  "capabilities": [
+    "5 agent templates: StreamMonitorAgent, AutoProducerAgent, ClipFactoryAgent, ModerationAgent, CaptionAgent (README.md)",
+    "10 MCP tool definitions via AgentToolkit.toMCPTools(): wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera (README.md)",
+    "AgentRuntime v2 production lifecycle: health/ready/metrics HTTP endpoints, 30s heartbeat, structured JSON logging, graceful SIGTERM/SIGINT handling (README.md)",
+    "6 subpath exports for tree-shaking: root, /tools, /agents, /adapters, /templates, /types (README.md)",
+    "Framework adapters: createMastraTools, createLangGraphTools, createLiveKitWaveTools, createKernelTools (README.md)",
+    "CLI binary wave-adk (package.json bin field -> dist/cli/index.mjs)",
+    "MCP server usable from any MCP client via npx @wave-av/mcp-server (README.md)"
+  ],
+  "claims": [
+    "Published on npm as @wave-av/adk, currently at version 1.0.2 (package.json)",
+    "Package is ESM-first with dual esm/cjs build output via tsup (package.json scripts.build, exports field)",
+    "License is Apache-2.0 (package.json)",
+    "While an agent runtime is running it exposes GET /health, GET /ready, GET /metrics (README.md agent lifecycle section)",
+    "Usage-based pricing starting at $19/month per README.md 'Why WAVE ADK' section (product claim, not verified against a live billing config in this repo)"
+  ],
+  "endpoints": [
+    { "method": "GET", "path": "/health", "does": "liveness probe returning { status, uptime } (README.md)" },
+    { "method": "GET", "path": "/ready", "does": "readiness probe returning { ready: true } (README.md)" },
+    { "method": "GET", "path": "/metrics", "does": "usage stats returning { totalCalls, totalDurationMs } (README.md)" }
+  ],
+  "install": [
+    { "manager": "npm", "cmd": "npm install @wave-av/adk" }
+  ],
+  "quickstart": {
+    "lang": "typescript",
+    "code": "import { StreamMonitorAgent } from '@wave-av/adk';\n\nconst monitor = new StreamMonitorAgent({\n  apiKey: process.env.WAVE_AGENT_KEY,\n  agentName: 'my-quality-monitor',\n  streamIds: ['stream_abc123'],\n  autoRemediate: true,\n  onQualityDrop: async (alert) => {\n    console.log(`Quality drop on ${alert.streamId}: ${alert.metric}`);\n  },\n});\n\nawait monitor.start();"
+  },
+  "mcp": { "tool": "@wave-av/mcp-server", "transport": "npx / MCP stdio" },
+  "links": {
+    "npm": "https://www.npmjs.com/package/@wave-av/adk",
+    "homepage": "https://wave.online/developers/adk"
+  }
+}
