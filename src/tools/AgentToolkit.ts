@@ -6,14 +6,11 @@
  */
 
 import { z } from 'zod';
+import { toMCPToolDefs, validated, type AgentTool, type MCPToolDef } from './shared';
 
-export interface AgentTool {
-  readonly name: string;
-  readonly description: string;
-  readonly parameters: Record<string, { type: string; description: string; required?: boolean }>;
-  readonly schema: z.ZodObject<z.ZodRawShape>;
-  readonly handler: (params: Record<string, unknown>) => Promise<unknown>;
-}
+// `AgentTool` now lives in ./shared so every toolkit here shares one tool shape. Re-exported from
+// its original home so `import { type AgentTool } from '@wave-av/adk'` keeps resolving unchanged.
+export type { AgentTool } from './shared';
 
 export class AgentToolkit {
   private readonly baseUrl: string;
@@ -24,11 +21,13 @@ export class AgentToolkit {
     this.baseUrl = config.baseUrl ?? 'https://api.wave.online';
   }
 
-  private validated(schema: z.ZodObject<z.ZodRawShape>, handler: (params: Record<string, unknown>) => Promise<unknown>) {
-    return async (params: Record<string, unknown>) => {
-      const parsed = schema.parse(params);
-      return handler(parsed as Record<string, unknown>);
-    };
+  // Kept as a thin instance method so the ten `this.validated(...)` call sites below stay untouched;
+  // the implementation is the shared one every toolkit uses.
+  private validated(
+    schema: z.ZodObject<z.ZodRawShape>,
+    handler: (params: Record<string, unknown>) => Promise<unknown>,
+  ) {
+    return validated(schema, handler);
   }
 
   getTools(): AgentTool[] {
@@ -151,18 +150,10 @@ export class AgentToolkit {
     ];
   }
 
-  toMCPTools(): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
-    return this.getTools().map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: {
-        type: 'object',
-        properties: Object.fromEntries(
-          Object.entries(tool.parameters).map(([key, val]) => [key, { type: val.type, description: val.description }])
-        ),
-        required: Object.entries(tool.parameters).filter(([_, v]) => v.required).map(([k]) => k),
-      },
-    }));
+  // Delegates to the shared mapper so all four toolkits emit byte-identical MCP definitions. The
+  // return type is spelled out rather than aliased to keep the emitted .d.ts shape unchanged.
+  toMCPTools(): MCPToolDef[] {
+    return toMCPToolDefs(this.getTools());
   }
 
   private async call(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
