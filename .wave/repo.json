@@ -1,0 +1,153 @@
+{
+  "name": "adk",
+  "kind": "library",
+  "domain": "agents",
+  "purpose": "TypeScript SDK (@wave-av/adk on npm) for building AI agents that interact with WAVE's live video infrastructure: 5 ready-made agent templates, an MCP toolkit exposing 10 tools, a production agent runtime (health/heartbeat/graceful-shutdown), and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.",
+  "visibility": "public",
+  "primaryLanguage": "TypeScript",
+  "topics": ["agents", "sdk", "video", "streaming", "mcp", "ai", "developer-kit", "typescript"],
+  "capabilities": [
+    { "id": "agent-templates", "does": "5 ready-made agent template classes extending WaveAgent: StreamMonitorAgent, AutoProducerAgent, ClipFactoryAgent, ModerationAgent, CaptionAgent.", "status": "ga" },
+    { "id": "mcp-toolkit", "does": "AgentToolkit.toMCPTools() exposes 10 MCP tool definitions (wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera).", "status": "ga" },
+    { "id": "agent-runtime", "does": "AgentRuntime provides an HTTP health server (/health, /ready, /metrics), a 30s heartbeat loop, structured JSON logging, and graceful SIGTERM/SIGINT shutdown.", "status": "ga" },
+    { "id": "framework-adapters", "does": "Adapter functions for Mastra (createMastraTools), LangGraph (createLangGraphTools), LiveKit (createLiveKitWaveTools), and Kernel.sh (createKernelTools).", "status": "ga" },
+    { "id": "subpath-exports", "does": "README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root \".\" entry and dist/ contains only index.js/index.cjs — the subpaths are not actually built or resolvable.", "status": "planned" },
+    { "id": "cli-binary", "does": "package.json declares a wave-adk CLI bin pointing at ./dist/cli/index.mjs, but dist/ (tracked in git) has no cli/ output — the CLI has never been built.", "status": "planned" }
+  ],
+  "claims": [
+    { "id": "npm-version-1-0-2", "text": "Published on npm as @wave-av/adk, currently at version 1.0.2.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.0.2\"" } },
+    { "id": "license-apache-2-0", "text": "License is Apache-2.0.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"license\": \"Apache-2.0\"" } },
+    { "id": "lifecycle-beta", "text": "capabilities.json declares lifecycle beta.", "resolver": { "type": "grep", "target": "capabilities.json", "expect": "\"lifecycle\": \"beta\"" } },
+    { "id": "dual-esm-cjs-build", "text": "Built as dual esm/cjs output via tsup.", "resolver": { "type": "grep", "target": "package.json", "expect": "esm,cjs" } },
+    { "id": "ten-mcp-tools", "text": "AgentToolkit exposes MCP tool definitions via toMCPTools().", "resolver": { "type": "grep", "target": "src/tools/AgentToolkit.ts", "expect": "toMCPTools" } },
+    { "id": "heartbeat-30s", "text": "AgentRuntime defaults heartbeatIntervalMs to 30 seconds.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "heartbeatIntervalMs ?? 30_000" } },
+    { "id": "graceful-sigterm", "text": "AgentRuntime handles SIGTERM for graceful shutdown.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "SIGTERM" } },
+    { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.mjs (not yet present in the built dist/).", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.mjs" } }
+  ],
+  "endpoints": [
+    { "method": "GET", "path": "/health", "does": "Liveness probe returning { status, uptime } while an AgentRuntime is running." },
+    { "method": "GET", "path": "/ready", "does": "Readiness probe returning { ready: true } while an AgentRuntime is running." },
+    { "method": "GET", "path": "/metrics", "does": "Usage stats returning { totalCalls, totalDurationMs } while an AgentRuntime is running." }
+  ],
+  "install": [
+    { "manager": "npm", "cmd": "npm install @wave-av/adk" }
+  ],
+  "quickstart": {
+    "lang": "typescript",
+    "code": "import { StreamMonitorAgent } from '@wave-av/adk';\n\nconst monitor = new StreamMonitorAgent({\n  apiKey: process.env.WAVE_AGENT_KEY,\n  agentName: 'my-quality-monitor',\n  streamIds: ['stream_abc123'],\n  autoRemediate: true,\n  onQualityDrop: async (alert) => {\n    console.log(`Quality drop on ${alert.streamId}: ${alert.metric}`);\n  },\n});\n\nawait monitor.start();"
+  },
+  "mcp": { "tool": "AgentToolkit.toMCPTools", "transport": "stdio" },
+  "links": {
+    "npm": "https://www.npmjs.com/package/@wave-av/adk",
+    "homepage": "https://wave.online/developers/adk",
+    "github": "https://github.com/wave-av/adk",
+    "community": "https://github.com/wave-av/adk/discussions"
+  },
+  "sections": [
+    {
+      "kind": "prose",
+      "heading": "Overview",
+      "body": "**The video layer for AI agents.** Build agents that see, produce, and deliver video. WAVE ADK is the complete toolkit for AI agents to interact with live video infrastructure. Like Stripe is for payments and Resend is for email — **WAVE is for live streaming and video**."
+    },
+    {
+      "kind": "code",
+      "heading": "Agent lifecycle",
+      "lang": "mermaid",
+      "body": "stateDiagram-v2\n    [*] --> Init: new AgentRuntime(agent)\n    Init --> Starting: runtime.start()\n    Starting --> Running: agent registered + health server up\n    Running --> Running: heartbeat every 30s\n    Running --> Stopping: SIGTERM / SIGINT / runtime.stop()\n    Stopping --> [*]: cleanup + flush logs\n\n    state Running {\n        [*] --> Healthy\n        Healthy --> Degraded: quality drop\n        Degraded --> Healthy: auto-remediate\n        Healthy --> Processing: tool invoked\n        Processing --> Healthy: result returned\n    }"
+    },
+    {
+      "kind": "prose",
+      "heading": "Runtime endpoints",
+      "body": "**Endpoints while running:**\n- `GET /health` — liveness probe (`{ status: \"healthy\", uptime: 12345 }`)\n- `GET /ready` — readiness probe (`{ ready: true }`)\n- `GET /metrics` — usage stats (`{ totalCalls: 42, totalDurationMs: 1200 }`)"
+    },
+    {
+      "kind": "prose",
+      "heading": "Status",
+      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map and built into dist/), and the wave-adk CLI binary (declared in package.json's bin field but dist/cli/ has never been built). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
+    },
+    {
+      "kind": "table",
+      "heading": "Agent templates",
+      "columns": ["Template", "What It Does"],
+      "rows": [
+        ["`StreamMonitorAgent`", "Watches quality, auto-remediates degradation"],
+        ["`AutoProducerAgent`", "AI-powered live show direction (camera switching, graphics)"],
+        ["`ClipFactoryAgent`", "Detects highlights, auto-creates social clips"],
+        ["`ModerationAgent`", "AI content moderation for chat and video"],
+        ["`CaptionAgent`", "Real-time transcription and multi-language captions"]
+      ]
+    },
+    {
+      "kind": "code",
+      "heading": "MCP tools (10 tools)",
+      "lang": "typescript",
+      "body": "import { AgentToolkit } from '@wave-av/adk/tools';\n\nconst toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n\n// Get MCP-compatible tool definitions\nconst tools = toolkit.toMCPTools();\n// → wave_create_stream, wave_monitor_stream, wave_create_clip,\n//   wave_switch_camera, wave_show_graphic, wave_moderate_chat,\n//   wave_start_captions, wave_analyze_quality, wave_mark_highlight,\n//   wave_control_camera"
+    },
+    {
+      "kind": "prose",
+      "heading": "Agent runtime v2 — overview",
+      "body": "Production-ready lifecycle with health endpoint, heartbeat, and structured logging:"
+    },
+    {
+      "kind": "code",
+      "heading": "Agent runtime v2",
+      "lang": "typescript",
+      "body": "import { StreamMonitorAgent, AgentRuntime } from '@wave-av/adk';\n\nconst agent = new StreamMonitorAgent({ /* config */ });\nconst runtime = new AgentRuntime(agent, {\n  healthPort: 8080,           // GET /health, /ready, /metrics\n  heartbeatIntervalMs: 30000, // Platform heartbeat\n  logLevel: 'info',           // Structured JSON logs\n});\n\nawait runtime.start(); // Handles SIGTERM/SIGINT gracefully"
+    },
+    {
+      "kind": "prose",
+      "heading": "Subpath imports (planned)",
+      "body": "Import only what you need for smaller bundles. Note: only the root `.` entry is currently built into dist/ — the /tools, /agents, /adapters, /templates, and /types subpaths shown below are declared in the README's intended API but not yet resolvable at runtime (see Status; tracked as capability `subpath-exports`, status planned)."
+    },
+    {
+      "kind": "code",
+      "heading": "Subpath imports — intended usage",
+      "lang": "typescript",
+      "body": "// Tools only\nimport { AgentToolkit, WaveToolError } from '@wave-av/adk/tools';\n\n// Agents only\nimport { WaveAgent, AgentRuntime } from '@wave-av/adk/agents';\n\n// Framework adapters only\nimport { createMastraTools } from '@wave-av/adk/adapters';\n\n// Agent templates\nimport { StreamMonitorAgent, ClipFactoryAgent } from '@wave-av/adk/templates';\n\n// Type definitions\nimport type { StreamQualityAlert, ClipHighlight } from '@wave-av/adk/types';"
+    },
+    {
+      "kind": "code",
+      "heading": "Framework adapters usage",
+      "lang": "typescript",
+      "body": "// Mastra — native TypeScript, MCP-first\nimport { createMastraTools } from '@wave-av/adk/adapters';\n\n// LangGraph — LangChain state machines\nimport { createLangGraphTools } from '@wave-av/adk/adapters';\n\n// LiveKit Agents — real-time voice/video\nimport { createLiveKitWaveTools } from '@wave-av/adk/adapters';\n\n// Kernel.sh — cloud browser automation\nimport { createKernelTools } from '@wave-av/adk/adapters';"
+    },
+    {
+      "kind": "prose",
+      "heading": "Framework-agnostic MCP server",
+      "body": "Or use the MCP server with ANY framework:"
+    },
+    {
+      "kind": "code",
+      "heading": "MCP server config",
+      "lang": "json",
+      "body": "{ \"wave\": { \"command\": \"npx\", \"args\": [\"@wave-av/mcp-server\"] } }"
+    },
+    {
+      "kind": "prose",
+      "heading": "Why WAVE ADK?",
+      "body": "- **10 MCP tools** — plug into Claude, Cursor, or any MCP client\n- **5 agent templates** — start producing in minutes, not weeks\n- **6 subpath exports** — tree-shake to only what you need (planned — see Status)\n- **Real infrastructure** — not a wrapper, actual video processing\n- **Enterprise-ready** — multi-region architecture, designed for scale\n\n(The README also advertises \"usage-based pricing, plans from $19/month\" — that is marketing copy with no billing config in this repo to verify it against, so it is omitted here per the SSOT grounding law; see Status.)"
+    },
+    {
+      "kind": "prose",
+      "heading": "Troubleshooting",
+      "body": "**Module not found with subpath imports** — ensure `\"moduleResolution\": \"node16\"` or `\"nodenext\"` in your `tsconfig.json`.\n\n**ESM required error** — ADK is ESM-first. Add `\"type\": \"module\"` to your `package.json`, or use a dynamic import (see the code sample below). CJS consumers can use `require()` — the package exports `.cjs` files via the `require` condition."
+    },
+    {
+      "kind": "code",
+      "heading": "Troubleshooting — dynamic import workaround",
+      "lang": "typescript",
+      "body": "const { AgentToolkit } = await import(\"@wave-av/adk/tools\");"
+    },
+    {
+      "kind": "table",
+      "heading": "Related packages",
+      "columns": ["Package", "Description"],
+      "rows": [
+        ["@wave-av/sdk", "https://www.npmjs.com/package/@wave-av/sdk — TypeScript SDK (34 API modules)"],
+        ["@wave-av/mcp-server", "https://www.npmjs.com/package/@wave-av/mcp-server — MCP server for AI tools"],
+        ["@wave-av/create-app", "https://www.npmjs.com/package/@wave-av/create-app — Scaffold a new agent project"],
+        ["@wave-av/cli", "https://www.npmjs.com/package/@wave-av/cli — Command-line interface"]
+      ]
+    }
+  ]
+}
