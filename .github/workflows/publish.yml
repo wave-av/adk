@@ -14,14 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # No registry-url: setup-node's registry-url writes an .npmrc referencing
+      # ${NODE_AUTH_TOKEN}, and npm aborts config loading when that variable is
+      # undefined. Trusted publishing needs no token, so we rely on the default
+      # registry instead.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       # Trusted publishing requires npm >= 11.5.1; Node 22 ships npm 10.x, so
-      # without this upgrade the OIDC exchange is simply unavailable.
-      - run: npm install -g npm@latest
+      # without this upgrade the OIDC exchange is simply unavailable. Pinned
+      # rather than @latest: this job holds id-token: write, so it should not
+      # execute whatever npm publishes next.
+      - run: npm install -g npm@11.5.1
 
       - run: npm ci
 
