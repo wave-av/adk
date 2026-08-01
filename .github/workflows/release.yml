@@ -175,11 +175,13 @@ jobs:
 
       # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 ships an older
       # npm. Upgrade the CLI on the runner, then PROVE the floor is met rather
-      # than assuming the upgrade did what it said.
+      # than assuming the upgrade did what it said. Pinned rather than @latest:
+      # this job holds id-token: write, so it should not execute whatever npm
+      # publishes next.
       - name: Upgrade npm to a trusted-publishing-capable CLI (>= 11.5.1)
         run: |
           set -euo pipefail
-          npm install -g npm@latest
+          npm install -g npm@11.5.1
           NPM_VER="$(npm --version)"
           echo "npm version: $NPM_VER"
           NPM_VER="$NPM_VER" node -e "
