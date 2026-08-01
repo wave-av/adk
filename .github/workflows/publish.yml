@@ -6,22 +6,28 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing requires npm >= 11.5.1; Node 22 ships npm 10.x, so
+      # without this upgrade the OIDC exchange is simply unavailable.
+      - run: npm install -g npm@latest
 
       - run: npm ci
 
       - run: npm run build
 
-      - run: npm publish --access public --no-provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # No NODE_AUTH_TOKEN: trusted publishing mints a short-lived OIDC
+      # credential for the publish. Every dependency of this package is public,
+      # so the install step needs no registry auth either.
+      - run: npm publish --access public --provenance
