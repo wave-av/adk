@@ -2,13 +2,17 @@
   "name": "adk",
   "kind": "library",
   "domain": "agents",
-  "purpose": "TypeScript SDK (@wave-av/adk on npm) for building AI agents that interact with WAVE's live video infrastructure: 5 ready-made agent templates, an MCP toolkit exposing 10 tools, a production agent runtime (health/heartbeat/graceful-shutdown), and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.",
+  "purpose": "TypeScript SDK (@wave-av/adk on npm) for building AI agents that interact with WAVE's live video infrastructure: 5 ready-made agent templates, four MCP-compatible toolkits exposing 17 tools across streams/production, the voice-transcribe-captions product spokes, Dispatch model routing, and the x402/MPP agent-payment rails, plus a production agent runtime (health/heartbeat/graceful-shutdown) and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.",
   "visibility": "public",
   "primaryLanguage": "TypeScript",
   "topics": ["agents", "sdk", "video", "streaming", "mcp", "ai", "developer-kit", "typescript"],
   "capabilities": [
     { "id": "agent-templates", "does": "5 ready-made agent template classes extending WaveAgent: StreamMonitorAgent, AutoProducerAgent, ClipFactoryAgent, ModerationAgent, CaptionAgent.", "status": "ga" },
-    { "id": "mcp-toolkit", "does": "AgentToolkit.toMCPTools() exposes 10 MCP tool definitions (wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera).", "status": "ga" },
+    { "id": "mcp-toolkit", "does": "AgentToolkit.toMCPTools() exposes 10 MCP tool definitions for streams and live production (wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera).", "status": "ga" },
+    { "id": "fleet-toolkit", "does": "FleetToolkit wraps the three gateway-fronted product spokes as 3 tools: wave_speak (POST /v1/voice), wave_transcribe (POST /v1/transcribe), wave_caption (POST /v1/captions). speak() returns a VoiceResult holding the real audio bytes, whose toJSON() emits a usage receipt instead of the bytes so a framework adapter cannot serialise megabytes of audio into a model's context.", "status": "ga" },
+    { "id": "dispatch-toolkit", "does": "DispatchToolkit wraps WAVE Dispatch model routing as 2 tools: wave_route (POST /) and wave_list_routing_profiles (GET /profiles). Defaults to dispatch.wave.online, which is a different host from the api.wave.online product gateway.", "status": "ga" },
+    { "id": "payments-toolkit", "does": "PaymentsToolkit wraps the read half of WAVE's agent-payment rails as 2 tools: wave_find_paid_services (GET /v1/mpp/services) and wave_payment_schemes (GET /v1/{x402,mpp}/facilitator/supported). These gateway routes are public, so the class takes no apiKey at all; the facilitator's money-moving verify and settle endpoints are deliberately not wrapped.", "status": "ga" },
+    { "id": "typed-tool-errors", "does": "WaveToolError is thrown on any non-2xx response from FleetToolkit, DispatchToolkit, or PaymentsToolkit, carrying the status and the response body verbatim, with isRateLimited flagging 429. AgentToolkit's own call() predates this and still returns error bodies as if they were successful results.", "status": "ga" },
     { "id": "agent-runtime", "does": "AgentRuntime provides an HTTP health server (/health, /ready, /metrics), a 30s heartbeat loop, structured JSON logging, and graceful SIGTERM/SIGINT shutdown.", "status": "ga" },
     { "id": "framework-adapters", "does": "Adapter functions for Mastra (createMastraTools), LangGraph (createLangGraphTools), LiveKit (createLiveKitWaveTools), and Kernel.sh (createKernelTools).", "status": "ga" },
     { "id": "subpath-exports", "does": "README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root \".\" entry and dist/ contains only index.js/index.cjs — the subpaths are not actually built or resolvable.", "status": "planned" },
@@ -22,7 +26,13 @@
     { "id": "ten-mcp-tools", "text": "AgentToolkit exposes MCP tool definitions via toMCPTools().", "resolver": { "type": "grep", "target": "src/tools/AgentToolkit.ts", "expect": "toMCPTools" } },
     { "id": "heartbeat-30s", "text": "AgentRuntime defaults heartbeatIntervalMs to 30 seconds.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "heartbeatIntervalMs ?? 30_000" } },
     { "id": "graceful-sigterm", "text": "AgentRuntime handles SIGTERM for graceful shutdown.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "SIGTERM" } },
-    { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.mjs (not yet present in the built dist/).", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.mjs" } }
+    { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.mjs (not yet present in the built dist/).", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.mjs" } },
+    { "id": "fleet-speak-tool", "text": "FleetToolkit exposes wave_speak, backed by POST /v1/voice.", "resolver": { "type": "grep", "target": "src/tools/FleetToolkit.ts", "expect": "wave_speak" } },
+    { "id": "fleet-grounded-in-spokes", "text": "The voice/transcribe/captions paths are taken from the spokes' own routers, not from api-spec/openapi.yaml, which over-declares endpoints that 404 in production.", "resolver": { "type": "grep", "target": "src/tools/FleetToolkit.ts", "expect": "api-spec#33" } },
+    { "id": "voice-result-omits-bytes-on-serialise", "text": "VoiceResult.toJSON() omits the audio bytes and emits a usage receipt, so serialising a tool result never pushes raw audio into a model's context.", "resolver": { "type": "grep", "target": "src/tools/FleetToolkit.ts", "expect": "toJSON" } },
+    { "id": "dispatch-own-host", "text": "DispatchToolkit defaults to dispatch.wave.online, not the api.wave.online product gateway.", "resolver": { "type": "grep", "target": "src/tools/DispatchToolkit.ts", "expect": "https://dispatch.wave.online" } },
+    { "id": "payments-sends-no-credential", "text": "PaymentsToolkit sends no Authorization header, because the MPP/x402 discovery routes are public and a key sent to them would leak for no benefit.", "resolver": { "type": "grep", "target": "src/tools/PaymentsToolkit.ts", "expect": "No Authorization header, on purpose" } },
+    { "id": "typed-wave-tool-error", "text": "WaveToolError carries the HTTP status and the response body verbatim.", "resolver": { "type": "grep", "target": "src/tools/shared.ts", "expect": "export class WaveToolError" } }
   ],
   "endpoints": [
     { "method": "GET", "path": "/health", "does": "Liveness probe returning { status, uptime } while an AgentRuntime is running." },
@@ -63,7 +73,7 @@
     {
       "kind": "prose",
       "heading": "Status",
-      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map and built into dist/), and the wave-adk CLI binary (declared in package.json's bin field but dist/cli/ has never been built). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
+      "body": "Beta. The core SDK is real and implemented: 5 agent templates, four MCP toolkits totalling 17 tools, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map and built into dist/), and the wave-adk CLI binary (declared in package.json's bin field but dist/cli/ has never been built). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
     },
     {
       "kind": "table",
@@ -79,9 +89,20 @@
     },
     {
       "kind": "code",
-      "heading": "MCP tools (10 tools)",
+      "heading": "MCP tools (17 tools across 4 toolkits)",
       "lang": "typescript",
-      "body": "import { AgentToolkit } from '@wave-av/adk/tools';\n\nconst toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n\n// Get MCP-compatible tool definitions\nconst tools = toolkit.toMCPTools();\n// → wave_create_stream, wave_monitor_stream, wave_create_clip,\n//   wave_switch_camera, wave_show_graphic, wave_moderate_chat,\n//   wave_start_captions, wave_analyze_quality, wave_mark_highlight,\n//   wave_control_camera"
+      "body": "import { AgentToolkit, FleetToolkit, DispatchToolkit, PaymentsToolkit } from '@wave-av/adk';\n\n// Streams + live production (10 tools)\nconst studio = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n// → wave_create_stream, wave_monitor_stream, wave_create_clip,\n//   wave_switch_camera, wave_show_graphic, wave_moderate_chat,\n//   wave_start_captions, wave_analyze_quality, wave_mark_highlight,\n//   wave_control_camera\n\n// Voice, transcription, captions (3 tools)\nconst fleet = new FleetToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n// → wave_speak, wave_transcribe, wave_caption\n\n// Model routing (2 tools) — Dispatch runs on its own host\nconst dispatch = new DispatchToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n// → wave_route, wave_list_routing_profiles\n\n// Agent-payment rails (2 tools) — public, so no key is taken at all\nconst payments = new PaymentsToolkit();\n// → wave_find_paid_services, wave_payment_schemes\n\nconst tools = [studio, fleet, dispatch, payments].flatMap((k) => k.toMCPTools());"
+    },
+    {
+      "kind": "prose",
+      "heading": "Working with audio",
+      "body": "`wave_speak` returns a `VoiceResult`. Read `result.audio` for the real bytes — but `JSON.stringify(result)` deliberately yields a receipt (`contentType`, `byteLength`, `usage`) rather than the bytes, so an agent framework that serialises tool results into a model's context cannot fill it with audio the model cannot listen to.\n\n`wave_transcribe` and `wave_caption` take a `url` that the WAVE spoke fetches server-side, so the audio must be reachable from the public internet. Every non-2xx response throws a `WaveToolError` carrying the status and the response body verbatim; check `.isRateLimited` to back off on a 429."
+    },
+    {
+      "kind": "code",
+      "heading": "Working with audio — example",
+      "lang": "typescript",
+      "body": "import { FleetToolkit, WaveToolError } from '@wave-av/adk';\n\nconst fleet = new FleetToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n\ntry {\n  const speech = await fleet.speak({ text: 'Ready when you are.' });\n  await writeFile('out.mp3', speech.audio);\n  console.log(speech.usage); // { meter, usageMinutes, rateLimitRemaining }\n\n  const { transcript } = await fleet.transcribe({ url: 'https://example.com/clip.wav' });\n} catch (err) {\n  if (err instanceof WaveToolError && err.isRateLimited) await backOff();\n  else throw err;\n}"
     },
     {
       "kind": "prose",
@@ -125,7 +146,7 @@
     {
       "kind": "prose",
       "heading": "Why WAVE ADK?",
-      "body": "- **10 MCP tools** — plug into Claude, Cursor, or any MCP client\n- **5 agent templates** — start producing in minutes, not weeks\n- **6 subpath exports** — tree-shake to only what you need (planned — see Status)\n- **Real infrastructure** — not a wrapper, actual video processing\n- **Enterprise-ready** — multi-region architecture, designed for scale\n\n(The README also advertises \"usage-based pricing, plans from $19/month\" — that is marketing copy with no billing config in this repo to verify it against, so it is omitted here per the SSOT grounding law; see Status.)"
+      "body": "- **17 MCP tools** — plug into Claude, Cursor, or any MCP client\n- **5 agent templates** — start producing in minutes, not weeks\n- **6 subpath exports** — tree-shake to only what you need (planned — see Status)\n- **Real infrastructure** — not a wrapper, actual video processing\n- **Enterprise-ready** — multi-region architecture, designed for scale\n\n(The README also advertises \"usage-based pricing, plans from $19/month\" — that is marketing copy with no billing config in this repo to verify it against, so it is omitted here per the SSOT grounding law; see Status.)"
     },
     {
       "kind": "prose",
