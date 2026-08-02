@@ -71,7 +71,7 @@ stateDiagram-v2
 
 ## Status
 
-Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root "." is declared in package.json's exports map and built into dist/), and the wave-adk CLI binary (declared in package.json's bin field but dist/cli/ has never been built). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here.
+Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/, with test files under src/__tests__/ (though no test script or CI gate currently runs them). Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root "." is declared in package.json's exports map), and the wave-adk CLI binary (the build now compiles src/cli/index.ts and bin points at ./dist/cli/index.js, but no published release includes it yet). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here.
 
 ## Agent templates
 
@@ -203,10 +203,10 @@ const { AgentToolkit } = await import("@wave-av/adk/tools");
 | --- | --- |
 | AgentRuntime provides an HTTP health server (/health, /ready, /metrics), a 30s heartbeat loop, structured JSON logging, and graceful SIGTERM/SIGINT shutdown. | ![ga](https://img.shields.io/badge/ga-brightgreen?style=flat-square) |
 | 5 ready-made agent template classes extending WaveAgent: StreamMonitorAgent, AutoProducerAgent, ClipFactoryAgent, ModerationAgent, CaptionAgent. | ![ga](https://img.shields.io/badge/ga-brightgreen?style=flat-square) |
-| package.json declares a wave-adk CLI bin pointing at ./dist/cli/index.mjs, but dist/ (tracked in git) has no cli/ output — the CLI has never been built. | ![planned](https://img.shields.io/badge/planned-lightgrey?style=flat-square) |
+| package.json declares a wave-adk CLI bin at ./dist/cli/index.js and the build now compiles src/cli/index.ts (see CHANGELOG Unreleased), but no published release ships the CLI yet. | ![planned](https://img.shields.io/badge/planned-lightgrey?style=flat-square) |
 | Adapter functions for Mastra (createMastraTools), LangGraph (createLangGraphTools), LiveKit (createLiveKitWaveTools), and Kernel.sh (createKernelTools). | ![ga](https://img.shields.io/badge/ga-brightgreen?style=flat-square) |
 | AgentToolkit.toMCPTools() exposes 10 MCP tool definitions (wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera). | ![ga](https://img.shields.io/badge/ga-brightgreen?style=flat-square) |
-| README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root "." entry and dist/ contains only index.js/index.cjs — the subpaths are not actually built or resolvable. | ![planned](https://img.shields.io/badge/planned-lightgrey?style=flat-square) |
+| README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root "." entry, so the subpaths are not resolvable (dist/ is gitignored build output, not tracked in git). | ![planned](https://img.shields.io/badge/planned-lightgrey?style=flat-square) |
 
 ## API
 
@@ -226,7 +226,7 @@ Every claim below is checked by `npm run verify` against the live repo or endpoi
 
 | Claim | How it's verified |
 | --- | --- |
-| package.json declares a wave-adk CLI binary at ./dist/cli/index.mjs (not yet present in the built dist/). | resolved by grepping `package.json` |
+| package.json declares a wave-adk CLI binary at ./dist/cli/index.js, built from src/cli/index.ts by the tsup build. | resolved by grepping `package.json` |
 | Built as dual esm/cjs output via tsup. | resolved by grepping `package.json` |
 | AgentRuntime handles SIGTERM for graceful shutdown. | resolved by grepping `src/agents/AgentRuntime.ts` |
 | AgentRuntime defaults heartbeatIntervalMs to 30 seconds. | resolved by grepping `src/agents/AgentRuntime.ts` |
