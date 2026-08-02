@@ -12,7 +12,7 @@
     { "id": "agent-runtime", "does": "AgentRuntime provides an HTTP health server (/health, /ready, /metrics), a 30s heartbeat loop, structured JSON logging, and graceful SIGTERM/SIGINT shutdown.", "status": "ga" },
     { "id": "framework-adapters", "does": "Adapter functions for Mastra (createMastraTools), LangGraph (createLangGraphTools), LiveKit (createLiveKitWaveTools), and Kernel.sh (createKernelTools).", "status": "ga" },
     { "id": "subpath-exports", "does": "README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root \".\" entry, so the subpaths are not resolvable (dist/ is gitignored build output, not tracked in git).", "status": "planned" },
-    { "id": "cli-binary", "does": "package.json declares a wave-adk CLI bin pointing at ./dist/cli/index.mjs, but no cli/ build output has ever been committed or published (dist/ is gitignored build output, not tracked in git); the CLI has never shipped.", "status": "planned" }
+    { "id": "cli-binary", "does": "package.json declares a wave-adk CLI bin at ./dist/cli/index.js and the build now compiles src/cli/index.ts (see CHANGELOG Unreleased), but no published release ships the CLI yet.", "status": "planned" }
   ],
   "claims": [
     { "id": "npm-version-1-0-2", "text": "Published on npm as @wave-av/adk, currently at version 1.0.2.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.0.2\"" } },
@@ -22,7 +22,7 @@
     { "id": "ten-mcp-tools", "text": "AgentToolkit exposes MCP tool definitions via toMCPTools().", "resolver": { "type": "grep", "target": "src/tools/AgentToolkit.ts", "expect": "toMCPTools" } },
     { "id": "heartbeat-30s", "text": "AgentRuntime defaults heartbeatIntervalMs to 30 seconds.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "heartbeatIntervalMs ?? 30_000" } },
     { "id": "graceful-sigterm", "text": "AgentRuntime handles SIGTERM for graceful shutdown.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "SIGTERM" } },
-    { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.mjs (not yet present in the built dist/).", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.mjs" } }
+    { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.js, built from src/cli/index.ts by the tsup build.", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.js" } }
   ],
   "endpoints": [
     { "method": "GET", "path": "/health", "does": "Liveness probe returning { status, uptime } while an AgentRuntime is running." },
@@ -63,7 +63,7 @@
     {
       "kind": "prose",
       "heading": "Status",
-      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map and built into dist/), and the wave-adk CLI binary (declared in package.json's bin field but dist/cli/ has never been built). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
+      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map), and the wave-adk CLI binary (the build now compiles src/cli/index.ts and bin points at ./dist/cli/index.js, but no published release includes it yet). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
     },
     {
       "kind": "table",
