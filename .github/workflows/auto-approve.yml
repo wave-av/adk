@@ -33,9 +33,29 @@ permissions:
   checks: read
   statuses: read
 
+# MUST match the reusable workflow's invariant, which says in as many words:
+# "one evaluation per PR at a time; never cancel a running kill-window"
+# (cancel-in-progress: false). A reusable workflow's jobs are jobs of the CALLER's
+# run, so a caller-level `cancel-in-progress: true` cancels the called job and
+# silently overrides that.
+#
+# What it costs is the audit trail, not safety. The ceremony emits a Slack audit
+# line either way at the end of its run. With `true`:
+#   1. PR labeled `auto-approve` -> Slack ping delivered, 60s kill window opens.
+#   2. Operator adds `hold` to KILL it -> that is itself a `labeled` event.
+#   3. This concurrency group cancels the in-flight run MID-WINDOW.
+#   4. A fresh run starts, sees `hold`, skips.
+# The outcome is safe (no approval), but the cancelled run never reaches its
+# audit line, so THE KILL IS NEVER RECORDED and the operator's ping is orphaned.
+# With `false` the run completes its window, re-checks at gate (8), sees `hold`,
+# aborts, and logs it. A kill that leaves no trace is the one outcome a
+# review-bypass mechanism cannot afford.
+#
+# Nothing is lost by not cancelling: gate (8) already re-checks head-moved and
+# aborts on a push during the window.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   evaluate:
