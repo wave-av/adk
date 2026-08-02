@@ -1,6 +1,6 @@
 {
   "name": "@wave-av/adk",
-  "version": "1.0.2",
+  "version": "1.0.15",
   "description": "WAVE Agent Developer Kit — Build AI agents that see, produce, and deliver video",
   "type": "module",
   "main": "./dist/index.js",
