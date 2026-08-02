@@ -15,7 +15,7 @@
     { "id": "cli-binary", "does": "package.json declares a wave-adk CLI bin at ./dist/cli/index.js and the build now compiles src/cli/index.ts (see CHANGELOG Unreleased), but no published release ships the CLI yet.", "status": "planned" }
   ],
   "claims": [
-    { "id": "npm-version-1-0-2", "text": "Published on npm as @wave-av/adk, currently at version 1.0.2.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.0.2\"" } },
+    { "id": "npm-version-1-0-15", "text": "Published on npm as @wave-av/adk, currently at version 1.0.15.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.0.15\"" } },
     { "id": "license-apache-2-0", "text": "License is Apache-2.0.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"license\": \"Apache-2.0\"" } },
     { "id": "lifecycle-beta", "text": "capabilities.json declares lifecycle beta.", "resolver": { "type": "grep", "target": "capabilities.json", "expect": "\"lifecycle\": \"beta\"" } },
     { "id": "dual-esm-cjs-build", "text": "Built as dual esm/cjs output via tsup.", "resolver": { "type": "grep", "target": "package.json", "expect": "esm,cjs" } },
