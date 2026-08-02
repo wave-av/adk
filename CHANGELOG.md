@@ -12,3 +12,6 @@ All notable changes to this project are documented here. The format is based on
   `./dist/cli/index.mjs`, a file the build never produced. The build now
   compiles `src/cli/index.ts` and `bin` points at the emitted
   `./dist/cli/index.js`.
+- TypeScript declarations now ship with the package: `package.json` advertised
+  `./dist/index.d.ts` but the build never emitted declarations. The build now
+  passes `--dts` to tsup.

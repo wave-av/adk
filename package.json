@@ -16,7 +16,7 @@
     "wave-adk": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/cli/index.ts --format esm,cjs",
+    "build": "tsup src/index.ts src/cli/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
     "lint": "eslint src/ --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
