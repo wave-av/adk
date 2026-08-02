@@ -63,7 +63,7 @@
     {
       "kind": "prose",
       "heading": "Status",
-      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/ and are covered by tests. Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map), and the wave-adk CLI binary (the build now compiles src/cli/index.ts and bin points at ./dist/cli/index.js, but no published release includes it yet). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
+      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/, with test files under src/__tests__/ (though no test script or CI gate currently runs them). Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map), and the wave-adk CLI binary (the build now compiles src/cli/index.ts and bin points at ./dist/cli/index.js, but no published release includes it yet). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
     },
     {
       "kind": "table",
