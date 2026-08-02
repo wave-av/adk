@@ -232,7 +232,7 @@ Every claim below is checked by `npm run verify` against the live repo or endpoi
 | AgentRuntime defaults heartbeatIntervalMs to 30 seconds. | resolved by grepping `src/agents/AgentRuntime.ts` |
 | License is Apache-2.0. | resolved by grepping `package.json` |
 | capabilities.json declares lifecycle beta. | resolved by grepping `capabilities.json` |
-| Published on npm as @wave-av/adk, currently at version 1.0.2. | resolved by grepping `package.json` |
+| Published on npm as @wave-av/adk, currently at version 1.0.15. | resolved by grepping `package.json` |
 | AgentToolkit exposes MCP tool definitions via toMCPTools(). | resolved by grepping `src/tools/AgentToolkit.ts` |
 
 ## Topics
