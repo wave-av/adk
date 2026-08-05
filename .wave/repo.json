@@ -3,6 +3,7 @@
   "kind": "library",
   "domain": "agents",
   "purpose": "TypeScript SDK (@wave-av/adk on npm) for building AI agents that interact with WAVE's live video infrastructure: 5 ready-made agent templates, an MCP toolkit exposing 10 tools, a production agent runtime (health/heartbeat/graceful-shutdown), and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.",
+  "description": "WAVE Agent Developer Kit — 10 MCP tools, 5 agent templates for AI video agents",
   "visibility": "public",
   "primaryLanguage": "TypeScript",
   "topics": ["agents", "sdk", "video", "streaming", "mcp", "ai", "developer-kit", "typescript"],
