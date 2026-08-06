@@ -85,8 +85,16 @@ jobs:
       - name: gitleaks (secret scan — published tree)
         run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --no-banner --exit-code 1
 
-      - name: Install ripgrep
-        run: command -v rg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+      # Both policy scripts depend on `rg -P` (PCRE2), and not every ripgrep build
+      # ships it (Ubuntu 22.04's apt package did not). Verify the capability at
+      # install time so a runner-image regression fails HERE, with a message that
+      # names the problem, not later inside a rule with an opaque exit 2.
+      - name: Install ripgrep (must have PCRE2)
+        run: |
+          rg --pcre2-version >/dev/null 2>&1 \
+            || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+          rg --pcre2-version >/dev/null 2>&1 \
+            || { echo "::error title=public-repo-guard::ripgrep on this runner lacks PCRE2; the guard's rules require rg -P."; exit 1; }
 
       - name: content policy (WAVE trade-secret / internal-leak gate)
         env:
@@ -132,8 +140,14 @@ jobs:
           sparse-checkout: scripts/public-repo-guard
           sparse-checkout-cone-mode: false
 
-      - name: Install ripgrep
-        run: command -v rg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+      # Same PCRE2 requirement as the tree job: body-policy.sh probes for it and
+      # fails closed, so surface a missing capability at install time instead.
+      - name: Install ripgrep (must have PCRE2)
+        run: |
+          rg --pcre2-version >/dev/null 2>&1 \
+            || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+          rg --pcre2-version >/dev/null 2>&1 \
+            || { echo "::error title=public-repo-guard::ripgrep on this runner lacks PCRE2; the guard's rules require rg -P."; exit 1; }
 
       # The body is read straight out of the event payload FILE and written to
       # another file. It is never interpolated into a run: block and never placed

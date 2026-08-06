@@ -26,6 +26,16 @@ FILE="${1:-}"
 [[ -n "$FILE" && -f "$FILE" ]] || { echo "::error::body-policy: usage: body-policy.sh <file>"; exit 2; }
 command -v rg >/dev/null 2>&1 || { echo "::error::body-policy: ripgrep (rg) required"; exit 2; }
 
+# Every rule below runs through `rg -P` (PCRE2), because the lookarounds demand it, but
+# not every ripgrep BUILD ships PCRE2 (Ubuntu 22.04's apt package does not). On
+# such a build the first rule would die with an opaque "ripgrep failed (exit 2)".
+# Probe once, up front, with an error that names the actual problem. The probe
+# exercises a lookbehind so it fails on exactly the builds the rules fail on.
+printf 'pcre2-probe' | rg -qP '(?<!x)pcre2-probe' >/dev/null 2>&1 || {
+  echo "::error::body-policy: this ripgrep build lacks PCRE2 support (rg -P); every rule here requires it. Install a PCRE2-enabled ripgrep (rg --pcre2-version must succeed)."
+  exit 2
+}
+
 VIOLATIONS=0
 
 # Lines that TALK ABOUT the control rather than leaking through it. Without this,
