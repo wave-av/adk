@@ -224,6 +224,10 @@ jobs:
 
       - name: body policy (PR / issue / comment text)
         env:
+          # body-policy.sh FAILS CLOSED (exit 2) if this is empty in CI: an
+          # unset, misspelled, or unexposed variable must surface as a red
+          # check, never as a silent skip of the private-repo rule. A repo with
+          # deliberately nothing to guard sets the variable to the literal 'none'.
           GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
         run: |
           set -euo pipefail

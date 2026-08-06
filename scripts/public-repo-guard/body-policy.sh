@@ -18,8 +18,9 @@
 # Exit: 0 clean · 1 blocking violation · 2 scanner error (fail closed).
 #
 # Allowlisting: a line carrying `guard:allow <reason>` is exempt (an accidental
-# leak never carries the marker; a deliberate one is visible in a public diff), as
-# is any line matching the ABOUT-THE-CONTROL allowlist below.
+# leak never carries the marker; a deliberate one is visible in a public diff).
+# The internal-marker rule additionally exempts lines matching the
+# ABOUT-THE-CONTROL allowlist below; every other rule ignores it.
 set -uo pipefail
 
 FILE="${1:-}"
@@ -43,10 +44,15 @@ VIOLATIONS=0
 # self-referential trap that gets a gate switched off. Ported verbatim in intent
 # from the client-side gate's allowlist, which was built for exactly this.
 #
-# Scope: PROSE rules only (the ones a discussion of the gate can trip). The
-# credential- and infrastructure-FORMAT rules never apply it: an AWS key or
-# private-key block is a leak even on a line that also says "public-repo-guard",
-# and gate discussions are exactly where such an accidental paste is most likely.
+# Scope: the internal-marker rule ONLY (the one a discussion of the gate can
+# trip with pure prose). The credential- and infrastructure-FORMAT rules never
+# apply it: an AWS key or private-key block is a leak even on a line that also
+# says "public-repo-guard", and gate discussions are exactly where such an
+# accidental paste is most likely. The private-repo-ops TOPOLOGY rule does not
+# apply it either: "public-repo-guard now blocks FOO_SECRET bound on <private
+# repo>" is precisely the leak that rule exists for, and naming the gate must
+# not sanitize it. A deliberate, safe example on such a line uses the visible
+# `guard:allow <reason>` marker instead.
 ABOUT_THE_CONTROL='(public-repo-guard|body-policy|content-policy|public-github-write-gate|\bNDA\s+(gate|guard|policy|denylist|sweep|scan|hook)\b|\bno\s+NDA\b|responsib\w*\s+disclos|SECURITY\.md)'
 
 # check <BLOCK|WARN> <name> <regex> <why> [prose]
@@ -143,8 +149,22 @@ check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(s
 # of what is wired to what, and it is the shape that actually leaked.
 #
 # Names are NOT hardcoded (this file is public); CI injects them via the
-# GUARD_PRIVATE_REPOS variable. Unset locally → this check is skipped.
-if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
+# GUARD_PRIVATE_REPOS variable.
+#
+# Availability is enforced, not assumed. This rule is the one the gate exists
+# for, and every other error path in this file fails closed — so "the org
+# variable is unset, misspelled, or not exposed to this run" must not be the
+# single path that prints "body policy OK" over an unscanned leak class. In CI
+# (GITHUB_ACTIONS set) an empty value is therefore a configuration error, exit
+# 2. A repo with deliberately nothing to guard opts out EXPLICITLY with the
+# literal value `none`. Local runs (no GITHUB_ACTIONS) still skip quietly:
+# contributors do not have the org variable, and the fixtures pin their own.
+if [[ -z "${GUARD_PRIVATE_REPOS:-}" ]]; then
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "::error title=public-repo-guard (private-repo-ops)::GUARD_PRIVATE_REPOS is empty in CI — the private-repo rule would silently not run and this check would report a pass it never earned. Set the GUARD_PRIVATE_REPOS org/repo variable, or set it to the literal 'none' to record that there is deliberately nothing to guard."
+    exit 2
+  fi
+elif [[ "${GUARD_PRIVATE_REPOS}" != "none" ]]; then
   OPS_DETAIL='(?:[A-Z][A-Z0-9]*_(?:SECRET|TOKEN|KEY|PASSWORD)|wrangler\s+secret|secret\s+(?:is\s+)?(?:bound|binding|list)|(?:is\s+)?bound\s+on|service\s+binding|\d{2,}\s+secrets)'
   _ALT=''
   IFS=', ' read -r -a _PRIV <<< "$GUARD_PRIVATE_REPOS"
@@ -160,10 +180,14 @@ if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
     # OPS_DETAIL, whose SCREAMING_CASE credential rule relies on case to tell an
     # env-var NAME from prose: under (?i) an innocent "cache_key" near a repo
     # name would block, and false positives are how a gate gets switched off.
+    #
+    # Deliberately STRICT (no about-the-control allowlist): this rule already
+    # tolerates bare mentions, so the only way to trip it is a private repo name
+    # NEXT TO operational detail — and that is a leak even on a line that also
+    # names the gate. A deliberate safe example uses `guard:allow <reason>`.
     check BLOCK private-repo-ops \
       "\\b(?i:${_ALT})\\b[^\\n]{0,140}?\\b${OPS_DETAIL}|${OPS_DETAIL}[^\\n]{0,140}?\\b(?i:${_ALT})\\b" \
-      'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public' \
-      prose
+      'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public'
   fi
 fi
 

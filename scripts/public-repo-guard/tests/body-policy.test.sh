@@ -70,6 +70,12 @@ expect 1 'credential format blocks even on a line naming the control' \
   "public-repo-guard flagged ${AKID_FIXTURE} in the job logs."
 expect 1 'internal tailscale IP' \
   'It resolves to 100.71.4.19 from inside the fleet.'
+# Regression: naming the gate does not sanitize topology. The about-the-control
+# allowlist is scoped to the internal-marker rule only — a line that says
+# "public-repo-guard" AND wires a private repo to a credential name is exactly
+# the leak private-repo-ops exists for.
+expect 1 'private repo + credential name blocks even on a line naming the control' \
+  'public-repo-guard fires when acme-alpha sits near a BAR_SECRET name; expected.'
 
 # --- must PASS (precision — these keep the gate deployable) -------------------
 expect 0 'bare private-repo cross-reference' \
@@ -86,8 +92,6 @@ expect 0 'public runner path is not an operator path' \
   'CI checks out to /home/runner/work/repo/repo before the scan runs.'  # enforce-ignore (fixture)
 expect 0 'talking about the control' \
   'body-policy blocks a private repo named next to a SECRET_TOKEN; that is intended.'
-expect 0 'prose rule stays exempt on a line naming the control' \
-  'public-repo-guard fires when acme-alpha sits near a BAR_SECRET name; expected.'
 expect 0 'internal-marker stays exempt on a line naming the control' \
   'public-repo-guard exists so an internal-only doc never lands in a public body.'
 expect 0 'explicit guard:allow with a reason' \
@@ -104,6 +108,28 @@ expect 0 'marker MENTIONED in smart quotes' \
   'Blocks operator home paths and “internal-only” text.'
 expect 1 'marker USED unquoted still blocks' \
   'Attaching the internal-only rollout plan; do not share outside the team.'
+
+# --- GUARD_PRIVATE_REPOS availability -----------------------------------------
+# In CI, an empty GUARD_PRIVATE_REPOS is a configuration error (exit 2): the
+# private-repo rule is the one this gate exists for, and an unset, misspelled,
+# or unexposed org variable must be a red check, never a silent skip that still
+# reports "body policy OK". Locally (no GITHUB_ACTIONS) the skip stays quiet,
+# and the literal 'none' is the explicit CI opt-out for a repo with nothing to
+# guard. Invoked via env(1), not expect(): these must NOT inherit the export above.
+printf '%s\n' 'Ordinary clean body text.' > "$TMP/envcase.txt"
+envcase() {
+  local want="$1" name="$2"; shift 2
+  env -u GUARD_PRIVATE_REPOS -u GITHUB_ACTIONS "$@" bash "$SCRIPT" "$TMP/envcase.txt" >/dev/null 2>&1
+  local rc=$?
+  if [[ "$rc" == "$want" ]]; then
+    PASS=$((PASS+1)); printf '  ok   %s\n' "$name"
+  else
+    FAIL=$((FAIL+1)); printf '  FAIL %s — want exit %s, got %s\n' "$name" "$want" "$rc"
+  fi
+}
+envcase 2 'empty GUARD_PRIVATE_REPOS in CI fails closed' GITHUB_ACTIONS=true
+envcase 0 'empty GUARD_PRIVATE_REPOS locally skips quietly'
+envcase 0 "explicit 'none' opt-out passes in CI" GITHUB_ACTIONS=true GUARD_PRIVATE_REPOS=none
 
 # --- fail closed --------------------------------------------------------------
 # Invoked directly, not through expect(): expect() always materializes a file, so
