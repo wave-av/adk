@@ -140,6 +140,20 @@ jobs:
           sparse-checkout: scripts/public-repo-guard
           sparse-checkout-cone-mode: false
 
+      # On pull_request events the checkout above contains PR-CONTROLLED code, and
+      # a gate must never execute the code of the thing it is judging: a PR could
+      # edit body-policy.sh in the same push that leaks in its body and go green.
+      # So the scanner that RUNS is checked out separately, from the trusted base
+      # ref. Only the scanned TEXT comes from the untrusted event. For issue and
+      # comment events github.sha is already the default branch, so the two
+      # checkouts are identical there.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: trusted-guard
+          sparse-checkout: scripts/public-repo-guard
+          sparse-checkout-cone-mode: false
+
       # Same PCRE2 requirement as the tree job: body-policy.sh probes for it and
       # fails closed, so surface a missing capability at install time instead.
       - name: Install ripgrep (must have PCRE2)
@@ -174,4 +188,15 @@ jobs:
       - name: body policy (PR / issue / comment text)
         env:
           GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
-        run: bash scripts/public-repo-guard/body-policy.sh "$RUNNER_TEMP/bodyscan/body.txt"
+        run: |
+          set -euo pipefail
+          SCANNER="trusted-guard/scripts/public-repo-guard/body-policy.sh"
+          if [ ! -f "$SCANNER" ]; then
+            # Bootstrap only: the base ref predates the guard's installation, so no
+            # trusted copy exists yet. A PR cannot steer execution here, because it
+            # cannot change what the base SHA contains; this branch only ever runs
+            # on the PR that first installs the bundle.
+            echo "::warning title=public-repo-guard (body-guard)::No body-policy.sh at the trusted ref (first install?); using this checkout's copy for this run only."
+            SCANNER="scripts/public-repo-guard/body-policy.sh"
+          fi
+          bash "$SCANNER" "$RUNNER_TEMP/bodyscan/body.txt"

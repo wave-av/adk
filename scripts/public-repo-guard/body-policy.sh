@@ -135,9 +135,13 @@ if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
     _ALT="${_ALT:+$_ALT|}${_esc}"
   done
   if [[ -n "$_ALT" ]]; then
-    # Both orders: name-then-detail and detail-then-name.
+    # Both orders: name-then-detail and detail-then-name. Case-insensitivity is
+    # scoped to the repo NAMES with (?i:...): a top-level (?i) would leak into
+    # OPS_DETAIL, whose SCREAMING_CASE credential rule relies on case to tell an
+    # env-var NAME from prose: under (?i) an innocent "cache_key" near a repo
+    # name would block, and false positives are how a gate gets switched off.
     check BLOCK private-repo-ops \
-      "(?i)\\b(?:${_ALT})\\b[^\\n]{0,140}?\\b${OPS_DETAIL}|${OPS_DETAIL}[^\\n]{0,140}?\\b(?:${_ALT})\\b" \
+      "\\b(?i:${_ALT})\\b[^\\n]{0,140}?\\b${OPS_DETAIL}|${OPS_DETAIL}[^\\n]{0,140}?\\b(?i:${_ALT})\\b" \
       'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public'
   fi
 fi

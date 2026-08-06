@@ -46,6 +46,9 @@ expect 1 'private repo + secret count' \
   'wave-gateway went from 74 secrets to 75 after this change.'
 expect 1 'private repo + service binding' \
   'This adds a service binding from the worker to agent-money for settlement.'
+# Case-insensitivity is scoped to the repo NAME alternation, not the whole rule.
+expect 1 'repo name still matches case-insensitively' \
+  'Wave-Gateway went from 74 secrets to 75 after this change.'
 expect 1 'operator home path' \
   'Repro: run it from /Users/someoperator/Documents/notes and it fails.'  # enforce-ignore (fixture)
 expect 1 'internal-only marker' \
@@ -67,6 +70,10 @@ expect 0 'two private repos, no operational detail' \
   'Both wave-gateway and wave-transports will need a follow-up for this.'
 expect 0 'credential NAME with no private repo nearby' \
   'The handler now reads SOME_API_TOKEN from the environment instead of a literal.'
+# Regression: a top-level (?i) once leaked into OPS_DETAIL and made the
+# SCREAMING_CASE credential rule match ordinary lowercase identifiers.
+expect 0 'lowercase identifier near a private repo is prose, not a credential' \
+  'In wave-gateway we renamed the cache_key format for the edge.'
 expect 0 'public runner path is not an operator path' \
   'CI checks out to /home/runner/work/repo/repo before the scan runs.'  # enforce-ignore (fixture)
 expect 0 'talking about the control' \
