@@ -14,8 +14,11 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # The names the real gate is configured with come from an org variable; the tests
-# pin their own so they are hermetic and do not depend on CI configuration.
-export GUARD_PRIVATE_REPOS="wave-gateway, wave-transports, agent-money"
+# pin their own so they are hermetic and do not depend on CI configuration. The
+# names (and every credential name and count below) are deliberately SYNTHETIC:
+# this file is public and exempt from the gates by path, so real private-repo
+# names or real credential names here would BE the leak the gate exists to block.
+export GUARD_PRIVATE_REPOS="acme-alpha, acme-beta, acme-gamma"
 
 PASS=0; FAIL=0
 
@@ -39,16 +42,16 @@ echo "body-policy fixtures"
 
 # --- must BLOCK ---------------------------------------------------------------
 expect 1 'private repo + credential name' \
-  'Flip is live: WAVE_VIEWPORT_LEASE_SECRET is bound on wave-gateway now.'
+  'Flip is live: ALPHA_VIEWPORT_LEASE_SECRET is bound on acme-alpha now.'
 expect 1 'private repo + credential name, reverse order' \
-  'The MOQ_JOIN_SECRET was added; wave-transports picks it up on deploy.'
+  'The BETA_JOIN_SECRET was added; acme-beta picks it up on deploy.'
 expect 1 'private repo + secret count' \
-  'wave-gateway went from 74 secrets to 75 after this change.'
+  'acme-alpha went from 74 secrets to 75 after this change.'
 expect 1 'private repo + service binding' \
-  'This adds a service binding from the worker to agent-money for settlement.'
+  'This adds a service binding from the worker to acme-gamma for settlement.'
 # Case-insensitivity is scoped to the repo NAME alternation, not the whole rule.
 expect 1 'repo name still matches case-insensitively' \
-  'Wave-Gateway went from 74 secrets to 75 after this change.'
+  'Acme-Alpha went from 74 secrets to 75 after this change.'
 expect 1 'operator home path' \
   'Repro: run it from /Users/someoperator/Documents/notes and it fails.'  # enforce-ignore (fixture)
 expect 1 'internal-only marker' \
@@ -65,21 +68,21 @@ expect 1 'internal tailscale IP' \
 
 # --- must PASS (precision — these keep the gate deployable) -------------------
 expect 0 'bare private-repo cross-reference' \
-  'This is the companion change to wave-transports#260; merge that one first.'
+  'This is the companion change to acme-beta#260; merge that one first.'
 expect 0 'two private repos, no operational detail' \
-  'Both wave-gateway and wave-transports will need a follow-up for this.'
+  'Both acme-alpha and acme-beta will need a follow-up for this.'
 expect 0 'credential NAME with no private repo nearby' \
   'The handler now reads SOME_API_TOKEN from the environment instead of a literal.'
 # Regression: a top-level (?i) once leaked into OPS_DETAIL and made the
 # SCREAMING_CASE credential rule match ordinary lowercase identifiers.
 expect 0 'lowercase identifier near a private repo is prose, not a credential' \
-  'In wave-gateway we renamed the cache_key format for the edge.'
+  'In acme-alpha we renamed the cache_key format for the edge.'
 expect 0 'public runner path is not an operator path' \
   'CI checks out to /home/runner/work/repo/repo before the scan runs.'  # enforce-ignore (fixture)
 expect 0 'talking about the control' \
   'body-policy blocks a private repo named next to a SECRET_TOKEN; that is intended.'
 expect 0 'explicit guard:allow with a reason' \
-  'Example for the docs: wave-gateway holds EXAMPLE_SECRET — guard:allow documented-example'
+  'Example for the docs: acme-alpha holds EXAMPLE_SECRET — guard:allow documented-example'
 expect 0 'ordinary clean body' \
   'Bumps the draft revision and regenerates the fixtures. No behaviour change.'
 # Regression: the first CI run of this job failed on its own PR, because a review

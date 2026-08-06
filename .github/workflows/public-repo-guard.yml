@@ -68,7 +68,12 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials: false on every checkout in this workflow: the jobs
+      # execute scripts taken from the PR's own tree, and attacker-controlled
+      # code must never run in a workspace with a token sitting in .git/config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       # gitleaks' GitHub Action requires a paid license for organizations; the CLI
       # itself is MIT-licensed and free. Pin the version AND verify the release
@@ -123,6 +128,13 @@ jobs:
   # issue or comment the text is already public the moment it posts, so this is
   # detection — it tells us to go redact, fast. Only the client-side pre-write hook
   # can stop that class before publication.
+  #
+  # Accepted side effect of that detection: on issue/comment events github.sha is
+  # the default-branch head, so a leak in an issue or comment surfaces as a red
+  # check on main. That is intentional (a leak SHOULD be loud somewhere a human
+  # looks) and safe for merges because the branch-protection-required check is
+  # `Secrets + content policy`, not this job. Keep it that way: making this name
+  # required would let any commenter turn main's checks red at will.
   body-guard:
     name: Body content policy
     if: github.event_name == 'pull_request' || github.event_name == 'issues' || github.event_name == 'issue_comment'
@@ -144,6 +156,7 @@ jobs:
           # tree on every comment.
           sparse-checkout: scripts/public-repo-guard
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       # On pull_request events the checkout above contains PR-CONTROLLED code, and
       # a gate must never execute the code of the thing it is judging: a PR could
@@ -158,6 +171,7 @@ jobs:
           path: trusted-guard
           sparse-checkout: scripts/public-repo-guard
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       # Same PCRE2 requirement as the tree job: body-policy.sh probes for it and
       # fails closed, so surface a missing capability at install time instead.
