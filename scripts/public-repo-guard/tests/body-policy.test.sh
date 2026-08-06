@@ -63,6 +63,11 @@ expect 1 'internal-only marker' \
 AKID_FIXTURE="AKI""A1234567890ABCDEF"
 expect 1 'AWS access key id' \
   "The failing job had ${AKID_FIXTURE} configured."
+# Regression: the about-the-control allowlist is scoped to PROSE rules only. A
+# credential-format hit must still block on a line that names the gate — gate
+# discussions are exactly where an accidental paste is most likely to land.
+expect 1 'credential format blocks even on a line naming the control' \
+  "public-repo-guard flagged ${AKID_FIXTURE} in the job logs."
 expect 1 'internal tailscale IP' \
   'It resolves to 100.71.4.19 from inside the fleet.'
 
@@ -81,6 +86,10 @@ expect 0 'public runner path is not an operator path' \
   'CI checks out to /home/runner/work/repo/repo before the scan runs.'  # enforce-ignore (fixture)
 expect 0 'talking about the control' \
   'body-policy blocks a private repo named next to a SECRET_TOKEN; that is intended.'
+expect 0 'prose rule stays exempt on a line naming the control' \
+  'public-repo-guard fires when acme-alpha sits near a BAR_SECRET name; expected.'
+expect 0 'internal-marker stays exempt on a line naming the control' \
+  'public-repo-guard exists so an internal-only doc never lands in a public body.'
 expect 0 'explicit guard:allow with a reason' \
   'Example for the docs: acme-alpha holds EXAMPLE_SECRET — guard:allow documented-example'
 expect 0 'ordinary clean body' \

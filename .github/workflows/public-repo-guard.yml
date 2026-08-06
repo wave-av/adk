@@ -176,6 +176,21 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      # Fallback scanner source for PRs whose BASE predates the guard (a long-lived
+      # branch, or a PR retargeted onto one): the DEFAULT branch's copy, which a PR
+      # can never control. Without this, the only fallback would be the PR's own
+      # checkout — and a gate must never execute the code of the thing it is
+      # judging. Skipped for issue/comment events, where the trusted checkout
+      # above is already the default-branch head.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: default-guard
+          sparse-checkout: scripts/public-repo-guard
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       # Same PCRE2 requirement as the tree job: body-policy.sh probes for it and
       # fails closed, so surface a missing capability at install time instead.
       - name: Install ripgrep (must have PCRE2)
@@ -212,13 +227,21 @@ jobs:
           GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
         run: |
           set -euo pipefail
+          # Scanner resolution, most-trusted first — and NEVER the PR's own
+          # checkout. "Base has no copy" is not only the install PR: it is also
+          # any PR opened against (or retargeted onto) a branch that predates the
+          # guard, and there a PR-supplied body-policy.sh would judge its own body.
           SCANNER="trusted-guard/scripts/public-repo-guard/body-policy.sh"
           if [ ! -f "$SCANNER" ]; then
-            # Bootstrap only: the base ref predates the guard's installation, so no
-            # trusted copy exists yet. A PR cannot steer execution here, because it
-            # cannot change what the base SHA contains; this branch only ever runs
-            # on the PR that first installs the bundle.
-            echo "::warning title=public-repo-guard (body-guard)::No body-policy.sh at the trusted ref (first install?); using this checkout's copy for this run only."
-            SCANNER="scripts/public-repo-guard/body-policy.sh"
+            echo "::warning title=public-repo-guard (body-guard)::No body-policy.sh at the trusted base ref (base predates the guard); falling back to the default branch's copy."
+            SCANNER="default-guard/scripts/public-repo-guard/body-policy.sh"
+          fi
+          if [ ! -f "$SCANNER" ]; then
+            # True bootstrap: no trusted copy exists anywhere yet. Fail rather
+            # than execute untrusted code — a red, non-required check on the
+            # install PR is a one-time cost; a gate that can be made to run the
+            # code it is judging is a standing bypass.
+            echo "::error title=public-repo-guard (body-guard)::No trusted copy of body-policy.sh on the base ref or the default branch; refusing to execute the PR's own copy. Merge the guard bundle to the default branch to activate this check."
+            exit 1
           fi
           bash "$SCANNER" "$RUNNER_TEMP/bodyscan/body.txt"

@@ -42,11 +42,18 @@ VIOLATIONS=0
 # the gate blocks its own pull requests and every security discussion — the
 # self-referential trap that gets a gate switched off. Ported verbatim in intent
 # from the client-side gate's allowlist, which was built for exactly this.
+#
+# Scope: PROSE rules only (the ones a discussion of the gate can trip). The
+# credential- and infrastructure-FORMAT rules never apply it: an AWS key or
+# private-key block is a leak even on a line that also says "public-repo-guard",
+# and gate discussions are exactly where such an accidental paste is most likely.
 ABOUT_THE_CONTROL='(public-repo-guard|body-policy|content-policy|public-github-write-gate|\bNDA\s+(gate|guard|policy|denylist|sweep|scan|hook)\b|\bno\s+NDA\b|responsib\w*\s+disclos|SECURITY\.md)'
 
-# check <BLOCK|WARN> <name> <regex> <why>
+# check <BLOCK|WARN> <name> <regex> <why> [prose]
+#   Pass `prose` as the 5th arg to apply the ABOUT_THE_CONTROL allowlist. Format
+#   rules (credentials, infrastructure identifiers) omit it and stay strict.
 check() {
-  local sev="$1" name="$2" re="$3" why="$4"
+  local sev="$1" name="$2" re="$3" why="$4" scope="${5:-strict}"
   [[ -z "$re" ]] && { echo "::error::body-policy: internal bug — empty regex for rule '$name'"; exit 2; }
   # rg exit: 0=match, 1=no match, >=2=real error → FAIL CLOSED. A gate that passes
   # because its scanner broke is worse than no gate: it reports success.
@@ -69,10 +76,12 @@ check() {
     echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $frc) applying the guard:allow filter for rule '$name'; failing closed."
     exit 2
   fi
-  matches="$(printf '%s' "$matches" | rg -vNiP -- "$ABOUT_THE_CONTROL")"; frc=$?
-  if (( frc >= 2 )); then
-    echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $frc) applying the about-the-control allowlist for rule '$name'; failing closed."
-    exit 2
+  if [[ "$scope" == "prose" ]]; then
+    matches="$(printf '%s' "$matches" | rg -vNiP -- "$ABOUT_THE_CONTROL")"; frc=$?
+    if (( frc >= 2 )); then
+      echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $frc) applying the about-the-control allowlist for rule '$name'; failing closed."
+      exit 2
+    fi
   fi
   [[ -z "$matches" ]] && return 0
   local count; count="$(printf '%s\n' "$matches" | grep -c '')"
@@ -118,7 +127,7 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'    'O
 # A quoted marker is also a trivial bypass, and that is an accepted trade. The
 # threat here is the ACCIDENTAL paste; a deliberate evader has easier routes, and
 # `guard:allow <reason>` already exists as the honest, visible one.
-check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(share|publish|distribute)|for\s+internal\s+use)\b(?![”"'"'"'`])' 'Text self-identifies as not-for-public'
+check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(share|publish|distribute)|for\s+internal\s+use)\b(?![”"'"'"'`])' 'Text self-identifies as not-for-public' prose
 
 # --- Private repo + operational detail (PROXIMITY, not bare name) ------------
 # The BODY profile deliberately DIVERGES from the FILE profile here, and the
@@ -153,7 +162,8 @@ if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
     # name would block, and false positives are how a gate gets switched off.
     check BLOCK private-repo-ops \
       "\\b(?i:${_ALT})\\b[^\\n]{0,140}?\\b${OPS_DETAIL}|${OPS_DETAIL}[^\\n]{0,140}?\\b(?i:${_ALT})\\b" \
-      'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public'
+      'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public' \
+      prose
   fi
 fi
 
