@@ -1,0 +1,14 @@
+.contracts-absent.json
+  h_af5ac1a9798224 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "ff636dc59f5c224b441084e9d8aae3011258e618",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
