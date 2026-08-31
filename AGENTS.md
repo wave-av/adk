@@ -44,4 +44,10 @@ budget_lines: 200
 index:
   - family: permissions-contract
     path: PERMISSIONS.md
+  - family: maintainers-contract
+    path: MAINTAINERS.md
+  - family: provenance-contract
+    path: PROVENANCE.md
+  - family: releasing-contract
+    path: RELEASING.md
 ```
