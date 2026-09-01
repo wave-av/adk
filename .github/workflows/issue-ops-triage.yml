@@ -11,12 +11,18 @@ concurrency:
 jobs:
   triage:
     if: vars.IO_ENABLED == 'true'
-    uses: wave-av/wave-foundation/.github/workflows/io-triage.yml@5d0b9e1a35efdb6d4e2ba55c483af670b69a8470
+    # Repointed to the PUBLIC mirror. This repo is PUBLIC and wave-foundation is PRIVATE; a
+    # public repo cannot `uses:` a private reusable workflow, so this call has been dying at
+    # STARTUP on every issue event — no jobs, no logs, no check. Measured: failure x5 here,
+    # against a control (other workflows in this repo succeed). wave-foundation#1327.
+    uses: wave-av/wave-foundation-public/.github/workflows/io-triage.yml@9ed1743007efa7a41940f05c8f11933f694ff410
     permissions:
       contents: read
       issues: write
     with:
-      scripts_repo: wave-av/wave-foundation
+      # The scripts must come from the mirror too — this repo's GITHUB_TOKEN cannot read
+      # private foundation, which is the same wall one level down.
+      scripts_repo: wave-av/wave-foundation-public
       scripts_ref: "5d0b9e1a35efdb6d4e2ba55c483af670b69a8470"
       owner: ${{ vars.IO_OWNER }}
     secrets:
