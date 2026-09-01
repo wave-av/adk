@@ -23,7 +23,12 @@ jobs:
       # The scripts must come from the mirror too — this repo's GITHUB_TOKEN cannot read
       # private foundation, which is the same wall one level down.
       scripts_repo: wave-av/wave-foundation-public
-      scripts_ref: "5d0b9e1a35efdb6d4e2ba55c483af670b69a8470"
+      # THIRD pointer — missed in #95 and caught by the pilot. This was a private-foundation
+      # SHA, which does not exist in the mirror at all (`git cat-file` on it there: "could not
+      # get object info"), so the scripts checkout failed even though scripts_repo was correct.
+      # Pinned to the SAME mirror commit as `uses:` above, so workflow and scripts are one
+      # reviewed version — the pin-both discipline wave-sec-gate.yml documents.
+      scripts_ref: "9ed1743007efa7a41940f05c8f11933f694ff410"
       owner: ${{ vars.IO_OWNER }}
     secrets:
       gh_pat: ${{ secrets.ISSUE_OPS_PAT }}
