@@ -24,6 +24,7 @@ No user-facing changes since 1.0.15.
   never produces, meaning those versions were published from somewhere other
   than this repository. `1.0.15` declares this repository the build source
   going forward without moving any published version number backwards (#72).
+  Published to npm as `@wave-av/adk@1.0.15`.
 
 ### Fixed
 
