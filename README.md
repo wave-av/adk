@@ -2,7 +2,7 @@
 
 # adk
 
-**TypeScript SDK (@wave-av/adk on npm) for building AI agents that interact with WAVE's live video infrastructure: 5 ready-made agent templates, an MCP toolkit exposing 10 tools, a production agent runtime (health/heartbeat/graceful-shutdown), and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.**
+**WAVE is media infrastructure for the agentic internet: one call shape moves live and on-demand media across every transport, and both kinds of user, people and agents, discover it, call it, and pay for it per call. @wave-av/adk is the agent development kit for that call shape: a TypeScript SDK with 5 ready-made agent templates, an MCP toolkit exposing 10 tools, an agent runtime (health, heartbeat, graceful shutdown), and adapters for Mastra, LangGraph, LiveKit, and Kernel.sh.**
 
 ![kind](https://img.shields.io/badge/kind-library-555?style=flat-square) ![domain](https://img.shields.io/badge/domain-agents-0a7?style=flat-square) ![lang](https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square) ![visibility](https://img.shields.io/badge/visibility-public-brightgreen?style=flat-square)
 
@@ -40,7 +40,7 @@ await monitor.start();
 
 ## Overview
 
-**The video layer for AI agents.** Build agents that see, produce, and deliver video. WAVE ADK is the complete toolkit for AI agents to interact with live video infrastructure. Like Stripe is for payments and Resend is for email — **WAVE is for live streaming and video**.
+Like Stripe is for payments and Resend is for email, WAVE is for media: the layer a person or an agent calls to move it, meter it, and pay for it. WAVE ADK is the agent development kit for that layer. Live video is the capability the templates cover today: agents that monitor, produce, clip, moderate, and caption a stream.
 
 ## Agent lifecycle
 
