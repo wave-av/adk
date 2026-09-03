@@ -1,0 +1,84 @@
+name: smoke-install
+
+# Regression guard for the fresh-install path: pack the REAL tarball this repo builds, install
+# it into a clean temp project (no symlinked node_modules, no local `src/` on the resolve path),
+# import it, and run the README quickstart against the live gateway. Catches the class of bug
+# where `npm run build` and the tests pass locally but a first-time `npm install` breaks (wrong
+# `exports` map, a dependency that only resolves inside this workspace, a missing `dist/` file).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-install-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Pack the real tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --silent | tail -n1)"
+          echo "tarball=$PWD/$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Fresh install into a clean temp project
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          npm i "$TARBALL" --registry=https://registry.npmjs.org
+
+      - name: ESM import check
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/smoke"
+          node -e "
+            import('@wave-av/adk').then((m) => {
+              const keys = Object.keys(m);
+              if (!m || keys.length === 0) { console.error('ESM import empty'); process.exit(1); }
+              console.log('ESM ok -', keys.length, 'exports:', keys.slice(0, 10).join(', '));
+            }).catch((e) => { console.error(e); process.exit(1); });
+          "
+
+      - name: Hello-world quickstart (live gateway, no mocks)
+        env:
+          WAVE_GATEWAY_API_KEY: ${{ secrets.WAVE_GATEWAY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WAVE_GATEWAY_API_KEY" ]; then
+            echo "skipped: WAVE_GATEWAY_API_KEY absent (fork or unset)"
+            exit 0
+          fi
+          cp scripts/smoke-quickstart.mjs "$RUNNER_TEMP/smoke/smoke-quickstart.mjs"
+          cd "$RUNNER_TEMP/smoke"
+          node smoke-quickstart.mjs

@@ -26,7 +26,7 @@ npm install @wave-av/adk
 import { StreamMonitorAgent } from '@wave-av/adk';
 
 const monitor = new StreamMonitorAgent({
-  apiKey: process.env.WAVE_AGENT_KEY,
+  apiKey: process.env.WAVE_AGENT_KEY!,
   agentName: 'my-quality-monitor',
   streamIds: ['stream_abc123'],
   autoRemediate: true,
@@ -88,7 +88,7 @@ Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP t
 ```typescript
 import { AgentToolkit } from '@wave-av/adk/tools';
 
-const toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY });
+const toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY! });
 
 // Get MCP-compatible tool definitions
 const tools = toolkit.toMCPTools();
