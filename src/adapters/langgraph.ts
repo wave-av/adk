@@ -73,10 +73,10 @@ export function createStreamMonitorNode(config: {
 
   return async (state: Record<string, unknown>): Promise<Record<string, unknown>> => {
     const tools = toolkit.getTools();
-    const monitorTool = tools.find((t) => t.name === 'monitor_stream');
+    const monitorTool = tools.find((t) => t.name === 'wave_monitor_stream');
 
     if (!monitorTool) {
-      return { ...state, error: 'monitor_stream tool not found' };
+      return { ...state, error: 'wave_monitor_stream tool not found' };
     }
 
     const health = await monitorTool.handler({ streamId: config.streamId });
@@ -102,10 +102,10 @@ export function createClipNode(config: {
 
   return async (state: Record<string, unknown>): Promise<Record<string, unknown>> => {
     const tools = toolkit.getTools();
-    const clipTool = tools.find((t) => t.name === 'create_clip');
+    const clipTool = tools.find((t) => t.name === 'wave_create_clip');
 
     if (!clipTool) {
-      return { ...state, error: 'create_clip tool not found' };
+      return { ...state, error: 'wave_create_clip tool not found' };
     }
 
     const clip = await clipTool.handler({
