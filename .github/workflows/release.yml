@@ -111,7 +111,20 @@ jobs:
       - name: e2e-smoke — pack + install + import the real tarball
         run: |
           set -euo pipefail
-          TARBALL="$(npm pack --silent | tail -n1)"
+          # --json instead of --silent: some npm versions suppress the stdout
+          # filename under --silent, which would leave TARBALL empty and turn
+          # the install below into an install of the workspace DIRECTORY --
+          # green gate, real tarball never exercised. Parse the filename and
+          # prove the .tgz exists so any regression fails loudly instead.
+          TARBALL="$(npm pack --json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8'))[0].filename)")"
+          case "$TARBALL" in
+            *.tgz) ;;
+            *) echo "::error::npm pack --json reported '$TARBALL', not a .tgz filename"; exit 1 ;;
+          esac
+          if [ ! -f "$TARBALL" ]; then
+            echo "::error::npm pack reported '$TARBALL' but no such file exists"
+            exit 1
+          fi
           TARBALL="$PWD/$TARBALL"
           echo "packed: $TARBALL"
           # Disposable project, outside the workspace, with lifecycle scripts
