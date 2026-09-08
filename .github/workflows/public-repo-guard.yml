@@ -29,6 +29,10 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+  # Required by the merge queue: a `merge_group` build never runs the `pull_request`
+  # trigger above, so without this the required "Secrets + content policy" check
+  # never reports on the queue's temporary ref and every queued PR waits forever.
+  merge_group:
 
 permissions:
   contents: read
