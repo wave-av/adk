@@ -53,6 +53,15 @@ on:
         required: false
         type: string
 
+# Repo-wide floor for the standalone workflow_dispatch entry point (a
+# workflow_call run is scoped by the CALLING job's own `permissions:` in
+# release.yml regardless of this block). Each job below narrows this further
+# with its own explicit `permissions:` -- this top-level block exists so a
+# future job added without one defaults to read-only, not whatever the repo's
+# default token policy happens to be.
+permissions:
+  contents: read
+
 # Serializes runs of both entry points for the same resolved tag, so a
 # workflow_dispatch backfill and a concurrent tag-push release of that same
 # tag (or two overlapping backfill dispatches) cannot run the `release` job's
