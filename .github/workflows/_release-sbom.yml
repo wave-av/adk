@@ -1,0 +1,195 @@
+name: (reusable) Release — generate + attach SPDX SBOM
+
+# SUPPLY-001 (cw issue wave-av/claude-workstation#4803): every published
+# release must carry an SBOM asset. Before this workflow, @wave-av/adk
+# releases had none — this is what wave-av/sdks#92's registry-cleanroom check
+# reports as the gap for adk.
+#
+# adk's release.yml has NO GitHub Release step at all (it stops after `npm
+# publish`), unlike the sibling release workflows this is modelled on
+# (wave-av/mcp-server, wave-av/cli). Rather than bolting an SBOM-only step
+# onto an existing release job, this mirrors wave-av/sdk-python#54's pattern
+# for that exact situation: the two jobs below generate the SBOM, THEN create
+# the GitHub Release with the packed npm tarball AND the SBOM attached in the
+# SAME `gh release create`/`upload` call — a Release for this repo is never
+# visible without its SBOM.
+#
+# Deliberately scans the tarball packed FROM THE NPM REGISTRY
+# (`npm pack <name>@<version>`), never a local rebuild — the SBOM must
+# describe what a consumer actually installs, not a possibly nondeterministic
+# rebuild that could drift from it. Packing from the registry IS also the
+# registry-existence proof: a bad backfill tag fails here, before anything
+# touches the GitHub Release for that tag.
+#
+# Two entry points:
+#   - workflow_call (normal path): chained from release.yml as the `sbom:`
+#     job, right after `publish:`. Always passes the tag that was just
+#     published (`github.ref_name` on that tag-push run) — non-empty, so the
+#     "default to latest" branch in "Resolve target tag" below never
+#     triggers on this path.
+#   - workflow_dispatch (standalone backfill): produces the Release + SBOM
+#     for an EXISTING published npm version WITHOUT re-running the whole
+#     secret-scan + verify + publish chain — this is how 1.0.15 (this repo's
+#     first gated release, published before this workflow existed) is
+#     backfilled. `tag` defaults to the latest version on the npm dist-tag
+#     `latest` when left empty — this repo has no prior gated GitHub Release
+#     to default to instead, since the `release` job below did not exist
+#     until now.
+#
+# Idempotent: `gh release upload --clobber` makes re-running this for a tag
+# that already has a release (e.g. a second backfill dispatch) a safe
+# no-op-that-refreshes, never a failure.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to generate/attach an SBOM for (e.g. v1.0.15). Leave empty to use the latest published npm version.'
+        required: false
+        type: string
+
+# Serializes runs of both entry points for the same resolved tag, so a
+# workflow_dispatch backfill and a concurrent tag-push release of that same
+# tag (or two overlapping backfill dispatches) cannot run the `release` job's
+# view/create/upload check-then-act sequence concurrently. `gh release upload
+# --clobber` is idempotent regardless, so any residual race is self-healing
+# on the next run, never a permanent inconsistency.
+concurrency:
+  group: adk-release-sbom-${{ inputs.tag || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  sbom:
+    name: Generate SPDX SBOM for the published tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read   # only reads the npm registry + stages a local artifact -- no repo write
+    outputs:
+      tag: ${{ steps.resolve-tag.outputs.tag }}
+    steps:
+      # Resolve the target tag BEFORE checkout so the checkout (and therefore
+      # package.json / package-lock.json read by the script) reflects the
+      # HISTORICAL tag being SBOM'd, not whatever the default branch currently
+      # is -- on a workflow_dispatch backfill those can differ (deps/version
+      # change over time). `inputs.tag` is populated uniformly for BOTH
+      # workflow_call and workflow_dispatch triggers.
+      - name: Resolve target tag
+        id: resolve-tag
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          PKG_NAME="@wave-av/adk"
+          TAG_NAME="$TAG_INPUT"
+          if [[ -z "$TAG_NAME" ]]; then
+            echo "no tag input given -- resolving the latest published npm version for $PKG_NAME"
+            LATEST_VERSION="$(npm view "$PKG_NAME" dist-tags.latest \
+              --registry https://registry.npmjs.org/ \
+              "--@wave-av:registry=https://registry.npmjs.org/")"
+            if [[ -z "$LATEST_VERSION" ]]; then
+              echo "::error::could not resolve the latest published npm version for $PKG_NAME"
+              exit 1
+            fi
+            TAG_NAME="v${LATEST_VERSION}"
+            echo "resolved (default) -> $TAG_NAME"
+          fi
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::TAG_NAME '$TAG_NAME' does not look like a semver tag (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "target tag: $TAG_NAME"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.resolve-tag.outputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # All pack/npm-ci/syft-install/scan/validate logic lives in
+      # scripts/sbom/generate-sbom.sh (kept out of this workflow file to keep
+      # the YAML small); this step is just wiring env -> script.
+      - name: Generate SPDX SBOM for the published tarball
+        env:
+          TAG_NAME: ${{ steps.resolve-tag.outputs.tag }}
+          OUT_DIR: ${{ runner.temp }}/sbom-out
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          bash scripts/sbom/generate-sbom.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ steps.resolve-tag.outputs.tag }}
+          path: ${{ runner.temp }}/sbom-out
+          retention-days: 14
+
+  release:
+    name: Create GitHub Release (tarball + SBOM attached together)
+    needs: sbom
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # create/upload the Release for this tag -- nothing else
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: sbom-${{ needs.sbom.outputs.tag }}
+          path: sbom-assets
+
+      - name: Create or update the GitHub Release (idempotent, tarball + SBOM together)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.sbom.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ASSETS=(sbom-assets/*)
+          if [[ "${#ASSETS[@]}" -eq 0 ]]; then
+            echo "::error::no files staged in sbom-assets/ to attach to the release"
+            exit 1
+          fi
+          echo "assets to attach: ${ASSETS[*]}"
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "release $TAG_NAME already exists -- uploading tarball + SBOM (idempotent path, --clobber)"
+            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          else
+            echo "release $TAG_NAME does not exist -- creating it with the tarball + SBOM attached in this same call"
+            TAG_VERSION="${TAG_NAME#v}"
+            PRERELEASE_FLAGS=()
+            if [[ "$TAG_VERSION" == *-* ]]; then
+              PRERELEASE_FLAGS=(--prerelease)
+            fi
+            # --verify-tag: refuse to invent a git tag out of whatever ref
+            # this job happens to run from -- the tag must already exist (it
+            # does, for every version proven live on the npm registry by the
+            # `sbom` job's `npm pack` step).
+            gh release create "$TAG_NAME" "${ASSETS[@]}" --verify-tag --title "$TAG_NAME" --generate-notes "${PRERELEASE_FLAGS[@]}"
+          fi
+
+          echo "verifying the release exists and carries both assets"
+          RELEASE_ASSETS="$(gh release view "$TAG_NAME" --json assets --jq '[.assets[].name] | join(" ")')"
+          echo "release assets: $RELEASE_ASSETS"
+          for f in "${ASSETS[@]}"; do
+            BASE="$(basename "$f")"
+            case "$RELEASE_ASSETS" in
+              *"$BASE"*) ;;
+              *)
+                echo "::error::$BASE missing from release $TAG_NAME after upload"
+                exit 1
+                ;;
+            esac
+          done
+          echo "SUPPLY-001: release $TAG_NAME carries both the packed tarball and its SPDX SBOM."

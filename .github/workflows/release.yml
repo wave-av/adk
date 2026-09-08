@@ -18,6 +18,21 @@ name: Release (public npm)
 # Modelled on the proven sdk/.github/workflows/release.yml, which produced the
 # OIDC-published @wave-av/sdk@2.1.0-next.0. Action pins are copied from it
 # deliberately: that file has demonstrably run and published.
+#
+# SUPPLY-001 (cw #4803): a fourth gate closes the gap that wave-av/sdks#92's
+# registry-cleanroom check reports for adk — no SBOM asset on any release.
+# Split into a reusable workflow (`_release-sbom.yml`) rather than inlined
+# here, same reasoning as this repo's own file-size gate: it downloads the
+# ACTUALLY PUBLISHED npm tarball for the released version (never a local
+# rebuild), generates an SPDX-JSON SBOM with syft (pinned release binary,
+# checksum-verified against syft's own published checksums.txt), and — since
+# this repo had NO GitHub Release step before this change — creates the
+# Release with the packed tarball AND the SBOM attached in the SAME `gh
+# release create`/`upload` call (mirroring wave-av/sdk-python#54's pattern),
+# so a Release here is never visible without its SBOM. See that file's header
+# for the full design and its own `workflow_dispatch` (with an optional `tag`
+# input, defaulting to the latest published npm version) for backfilling an
+# SBOM onto an already-published version with no new npm publish.
 
 on:
   push:
@@ -239,3 +254,19 @@ jobs:
         run: |
           set -euo pipefail
           npm publish --access public --provenance --tag "$DIST_TAG"
+
+  # ---------------------------------------------------------------------------
+  # Gate 4 — SUPPLY-001 (cw #4803). Generates the SBOM for the published
+  # tarball, then creates the GitHub Release with the tarball + SBOM attached
+  # together. Split into a reusable workflow (see that file's header for the
+  # full design) purely to keep this file under the repo's file-size gate —
+  # it runs ONLY after `publish` succeeds on the normal tag-push path.
+  # ---------------------------------------------------------------------------
+  sbom:
+    name: SBOM (SPDX, idempotent)
+    needs: publish
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_release-sbom.yml
+    with:
+      tag: ${{ github.ref_name }}
