@@ -17,21 +17,27 @@
 #
 # Exit: 0 clean · 1 blocking violation · 2 scanner error (fail closed).
 #
-# Allowlisting: a line carrying `guard:allow <reason>` is exempt (an accidental
-# leak never carries the marker; a deliberate one is visible in a public diff).
-# The internal-marker rule additionally exempts lines matching the
-# ABOUT-THE-CONTROL allowlist below; every other rule ignores it.
+# Allowlisting: unlike the tree scanner, where a `guard:allow` marker lands in a
+# reviewable diff, a body is free-form text the untrusted author controls and can
+# edit at any time — an allowlist marker there is one edit away, not one review
+# away. So BOTH allowlists (the `guard:allow <reason>` marker and the
+# ABOUT-THE-CONTROL list below) apply ONLY to the self-referential PROSE rule
+# (internal-marker) — never to the credential-format, infrastructure, or
+# private-repo-topology rules, which have NO author-controlled escape in a body. The
+# residual prose-rule escape is an accepted trade: the threat model is the
+# accidental paste, and a gate that blocks its own security discussions gets
+# switched off.
 set -uo pipefail
 
 FILE="${1:-}"
 [[ -n "$FILE" && -f "$FILE" ]] || { echo "::error::body-policy: usage: body-policy.sh <file>"; exit 2; }
 command -v rg >/dev/null 2>&1 || { echo "::error::body-policy: ripgrep (rg) required"; exit 2; }
 
-# Every rule below runs through `rg -P` (PCRE2), because the lookarounds demand it, but
-# not every ripgrep BUILD ships PCRE2 (Ubuntu 22.04's apt package does not). On
-# such a build the first rule would die with an opaque "ripgrep failed (exit 2)".
-# Probe once, up front, with an error that names the actual problem. The probe
-# exercises a lookbehind so it fails on exactly the builds the rules fail on.
+# Every rule below runs through `rg -P` (PCRE2), because the lookarounds demand it,
+# but not every ripgrep BUILD ships PCRE2 (Ubuntu's apt package does not). On such
+# a build the first rule would die with an opaque "ripgrep failed (exit 2)". Probe
+# once, up front, with an error that names the actual problem. The probe exercises
+# a lookbehind so it fails on exactly the builds the rules fail on.
 printf 'pcre2-probe' | rg -qP '(?<!x)pcre2-probe' >/dev/null 2>&1 || {
   echo "::error::body-policy: this ripgrep build lacks PCRE2 support (rg -P); every rule here requires it. Install a PCRE2-enabled ripgrep (rg --pcre2-version must succeed)."
   exit 2
@@ -44,22 +50,22 @@ VIOLATIONS=0
 # self-referential trap that gets a gate switched off. Ported verbatim in intent
 # from the client-side gate's allowlist, which was built for exactly this.
 #
-# Scope: the internal-marker rule ONLY (the one a discussion of the gate can
-# trip with pure prose). The credential- and infrastructure-FORMAT rules never
-# apply it: an AWS key or private-key block is a leak even on a line that also
-# says "public-repo-guard", and gate discussions are exactly where such an
-# accidental paste is most likely. The private-repo-ops TOPOLOGY rule does not
-# apply it either: "public-repo-guard now blocks FOO_SECRET bound on <private
-# repo>" is precisely the leak that rule exists for, and naming the gate must
-# not sanitize it. A deliberate, safe example on such a line uses the visible
-# `guard:allow <reason>` marker instead.
+# SCOPE: this allowlist applies ONLY to the rule that can self-trip on pure prose
+# when a body DESCRIBES the control (internal-marker, below). It must NEVER apply
+# to the credential-format, infrastructure-identifier, or private-repo-topology
+# rules: a live key is a live key even when the sentence around it names the gate,
+# and PRs about this gate are exactly the ones whose bodies contain these words.
+# Those rules take no allowlist at all in a body — see private-repo-ops below.
 ABOUT_THE_CONTROL='(public-repo-guard|body-policy|content-policy|public-github-write-gate|\bNDA\s+(gate|guard|policy|denylist|sweep|scan|hook)\b|\bno\s+NDA\b|responsib\w*\s+disclos|SECURITY\.md)'
 
-# check <BLOCK|WARN> <name> <regex> <why> [prose]
-#   Pass `prose` as the 5th arg to apply the ABOUT_THE_CONTROL allowlist. Format
-#   rules (credentials, infrastructure identifiers) omit it and stay strict.
+# check <BLOCK|WARN> <name> <regex> <why> [about-the-control-exempt]
+#   Pass the literal string `about-the-control-exempt` as the 5th argument to let
+#   lines matching ABOUT_THE_CONTROL or carrying `guard:allow <reason>` through.
+#   Only self-referential prose rules may opt in; hard-format rules must not —
+#   in a body both escapes are author-controlled, so a live key stays a hit no
+#   matter what else its line says.
 check() {
-  local sev="$1" name="$2" re="$3" why="$4" scope="${5:-strict}"
+  local sev="$1" name="$2" re="$3" why="$4" about_exempt="${5:-}"
   [[ -z "$re" ]] && { echo "::error::body-policy: internal bug — empty regex for rule '$name'"; exit 2; }
   # rg exit: 0=match, 1=no match, >=2=real error → FAIL CLOSED. A gate that passes
   # because its scanner broke is worse than no gate: it reports success.
@@ -73,19 +79,27 @@ check() {
   # silently errors out locally while working on GNU/CI — the gate would then
   # disagree with itself depending on where it ran. rg is already required above.
   #
-  # The filters fail closed too, same as the scan above. An `|| true` here would
-  # turn a broken filter (exit >= 2) into an empty match list, converting a
-  # DETECTED hit into a pass; exit 1 just means the filter removed every line.
-  local matches frc
-  matches="$(printf '%s' "$raw" | rg -vN -- 'guard:allow[[:space:]]+[^[:space:]]')"; frc=$?
-  if (( frc >= 2 )); then
-    echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $frc) applying the guard:allow filter for rule '$name'; failing closed."
-    exit 2
-  fi
-  if [[ "$scope" == "prose" ]]; then
-    matches="$(printf '%s' "$matches" | rg -vNiP -- "$ABOUT_THE_CONTROL")"; frc=$?
-    if (( frc >= 2 )); then
-      echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $frc) applying the about-the-control allowlist for rule '$name'; failing closed."
+  # The filters fail closed too: exit 1 just means every line was filtered (fine),
+  # but >=2 is a scanner error, and treating it as "no matches" would turn a broken
+  # allowlist into a green check over real hits.
+  #
+  # BOTH allowlists live inside the opt-in branch: a body has no reviewable diff,
+  # so the untrusted author could otherwise neutralize any rule — including the
+  # live-credential rules — by appending `guard:allow <reason>` to the same line.
+  # Only the self-referential prose rules may be exempted, and only because their
+  # alternative (blocking every discussion of the gate itself) gets the gate
+  # switched off.
+  local matches="$raw"
+  if [[ "$about_exempt" == "about-the-control-exempt" ]]; then
+    matches="$(printf '%s' "$matches" \
+      | rg -vN -- 'guard:allow[[:space:]]+[^[:space:]]')"; rc=$?
+    if (( rc >= 2 )); then
+      echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) applying the guard:allow filter for rule '$name' — failing closed."
+      exit 2
+    fi
+    matches="$(printf '%s' "$matches" | rg -vNiP -- "$ABOUT_THE_CONTROL")"; rc=$?
+    if (( rc >= 2 )); then
+      echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) applying the about-the-control allowlist for rule '$name' — failing closed."
       exit 2
     fi
   fi
@@ -116,7 +130,14 @@ check BLOCK private-key      '-----BEGIN [A-Z ]*PRIVATE KEY-----'            'Em
 # --- Infrastructure identifiers ----------------------------------------------
 # shellcheck disable=SC2016  # $CLOUDFLARE_ACCOUNT_ID is literal guidance text
 check BLOCK cf-account-id    'account_id\s*[:=]\s*["'"'"']?[0-9a-f]{32}'      'Hardcoded Cloudflare account_id — reference the env var instead'
-check BLOCK internal-ip      '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'  'Internal Tailscale-CGNAT IP (100.64.0.0/10) — internal fleet address'
+# The leading lookahead exempts the range's own DESIGNATION — the all-zero
+# network address 100.64.0.0, with or without a CIDR suffix. That string is the
+# public NAME of the CGNAT range (it appears in this rule's own message), and
+# infrastructure rules deliberately accept no allowlist marker, so matching it
+# would block every body that so much as quotes the gate's documentation, with
+# no remedy short of deleting the text. Every real fleet address — any host
+# with a non-zero octet — is still a hit.
+check BLOCK internal-ip      '(?!100\.64\.0\.0(?:/[0-9]{1,2})?(?![0-9]))100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'  'Internal Tailscale-CGNAT IP (100.64.0.0/10) — internal fleet address'
 # shellcheck disable=SC2016  # $HOME is literal guidance text
 check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'    'Operator absolute home path — leaks identity and local layout'
 
@@ -133,7 +154,7 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'    'O
 # A quoted marker is also a trivial bypass, and that is an accepted trade. The
 # threat here is the ACCIDENTAL paste; a deliberate evader has easier routes, and
 # `guard:allow <reason>` already exists as the honest, visible one.
-check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(share|publish|distribute)|for\s+internal\s+use)\b(?![”"'"'"'`])' 'Text self-identifies as not-for-public' prose
+check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(share|publish|distribute)|for\s+internal\s+use)\b(?![”"'"'"'`])' 'Text self-identifies as not-for-public' about-the-control-exempt
 
 # --- Private repo + operational detail (PROXIMITY, not bare name) ------------
 # The BODY profile deliberately DIVERGES from the FILE profile here, and the
@@ -165,9 +186,19 @@ if [[ -z "${GUARD_PRIVATE_REPOS:-}" ]]; then
     exit 2
   fi
 elif [[ "${GUARD_PRIVATE_REPOS}" != "none" ]]; then
-  OPS_DETAIL='(?:[A-Z][A-Z0-9]*_(?:SECRET|TOKEN|KEY|PASSWORD)|wrangler\s+secret|secret\s+(?:is\s+)?(?:bound|binding|list)|(?:is\s+)?bound\s+on|service\s+binding|\d{2,}\s+secrets)'
+  # Case-insensitivity is scoped per alternative with (?i:...). The SCREAMING_CASE
+  # credential-NAME alternative must stay case-EXACT — that casing is the whole
+  # signal ("api_key" in prose is not a credential name) — while the prose verbs
+  # and the repo names themselves match in any case.
+  OPS_DETAIL='(?:[A-Z][A-Z0-9]*_(?:SECRET|TOKEN|KEY|PASSWORD)|(?i:wrangler\s+secret|secret\s+(?:is\s+)?(?:bound|binding|list)|(?:is\s+)?bound\s+on|service\s+binding)|\d{2,}\s+secrets)'
   _ALT=''
-  IFS=', ' read -r -a _PRIV <<< "$GUARD_PRIVATE_REPOS"
+  # The org variable may be comma- OR newline-separated; `read` stops at the first
+  # newline, which would silently configure only the first name and report a pass
+  # over the unscanned rest. Normalize newlines to spaces before splitting — and
+  # carriage returns too: a CRLF-stored value would otherwise leave an invisible
+  # \r glued to each name, so the built regex matches nothing and the gate
+  # fail-opens with no diagnostic.
+  IFS=', ' read -r -a _PRIV <<< "${GUARD_PRIVATE_REPOS//[$'\n'$'\r']/ }"
   for _name in "${_PRIV[@]}"; do
     [[ -z "$_name" ]] && continue
     # Regex-escape so metacharacters in a name match literally.
@@ -175,16 +206,16 @@ elif [[ "${GUARD_PRIVATE_REPOS}" != "none" ]]; then
     _ALT="${_ALT:+$_ALT|}${_esc}"
   done
   if [[ -n "$_ALT" ]]; then
-    # Both orders: name-then-detail and detail-then-name. Case-insensitivity is
-    # scoped to the repo NAMES with (?i:...): a top-level (?i) would leak into
-    # OPS_DETAIL, whose SCREAMING_CASE credential rule relies on case to tell an
-    # env-var NAME from prose: under (?i) an innocent "cache_key" near a repo
-    # name would block, and false positives are how a gate gets switched off.
+    # Both orders: name-then-detail and detail-then-name.
     #
-    # Deliberately STRICT (no about-the-control allowlist): this rule already
-    # tolerates bare mentions, so the only way to trip it is a private repo name
-    # NEXT TO operational detail — and that is a leak even on a line that also
-    # names the gate. A deliberate safe example uses `guard:allow <reason>`.
+    # Deliberately STRICT — no 5th argument, so NEITHER allowlist reaches this
+    # rule. It already tolerates a bare mention, so the only way to trip it is a
+    # private repo name sitting NEXT TO operational detail, and that is a leak
+    # even on a line that also names the gate ("public-repo-guard now blocks
+    # FOO_SECRET bound on <private repo>" is precisely the topology this rule
+    # exists for). Both escapes are author-controlled in a body — one edit, not
+    # one review — so a documented safe example belongs in a FILE, where
+    # `guard:allow <reason>` lands in a reviewable diff.
     check BLOCK private-repo-ops \
       "\\b(?i:${_ALT})\\b[^\\n]{0,140}?\\b${OPS_DETAIL}|${OPS_DETAIL}[^\\n]{0,140}?\\b(?i:${_ALT})\\b" \
       'A private WAVE repo named alongside internal operational detail (credential name, secret binding, or secret count) — the wiring topology is not public'

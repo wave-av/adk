@@ -68,14 +68,36 @@ expect 1 'AWS access key id' \
 # discussions are exactly where an accidental paste is most likely to land.
 expect 1 'credential format blocks even on a line naming the control' \
   "public-repo-guard flagged ${AKID_FIXTURE} in the job logs."
-expect 1 'internal tailscale IP' \
-  'It resolves to 100.71.4.19 from inside the fleet.'
+# Regression: `guard:allow` once exempted EVERY rule, but a body has no reviewable
+# diff — the untrusted author can append the marker in the same edit that leaks.
+# The marker may only exempt the self-referential prose rules, never a credential.
+expect 1 'guard:allow does NOT exempt a credential in a body' \
+  "Key for the repro: ${AKID_FIXTURE} — guard:allow repro-example"
 # Regression: naming the gate does not sanitize topology. The about-the-control
-# allowlist is scoped to the internal-marker rule only — a line that says
-# "public-repo-guard" AND wires a private repo to a credential name is exactly
-# the leak private-repo-ops exists for.
+# allowlist does not reach private-repo-ops — a line that says "public-repo-guard"
+# AND wires a private repo to a credential name is exactly the leak that rule
+# exists for. A deliberate safe example belongs in a file, where the marker lands
+# in a reviewable diff, not in a body the author can edit at will.
 expect 1 'private repo + credential name blocks even on a line naming the control' \
   'public-repo-guard fires when acme-alpha sits near a BAR_SECRET name; expected.'
+expect 1 'guard:allow does NOT exempt private-repo topology in a body' \
+  'Example for the docs: acme-alpha holds EXAMPLE_SECRET — guard:allow documented-example'
+expect 1 'internal tailscale IP' \
+  'It resolves to 100.71.4.19 from inside the fleet.'
+# The range-designation exemption must stay razor-thin: a host one address past
+# the all-zero network form is a real fleet machine and still blocks.
+expect 1 'host adjacent to the network address still blocks' \
+  'The subnet router answers on 100.64.0.1 inside the fleet.'
+# Regression: `read` stops at the first newline, so a newline-separated org variable
+# once configured only the first name and passed over the unscanned rest.
+GUARD_PRIVATE_REPOS=$'acme-alpha\nacme-beta\nacme-gamma' \
+expect 1 'newline-separated GUARD_PRIVATE_REPOS still scans later names' \
+  'The BETA_JOIN_SECRET was added; acme-beta picks it up on deploy.'
+# Regression: a CRLF-stored variable once glued an invisible \r to every name, so
+# the built regex matched nothing and the gate fail-opened with no diagnostic.
+GUARD_PRIVATE_REPOS=$'acme-alpha\r\nacme-beta\r\nacme-gamma\r' \
+expect 1 'CRLF-separated GUARD_PRIVATE_REPOS still scans every name' \
+  'The BETA_JOIN_SECRET was added; acme-beta picks it up on deploy.'
 
 # --- must PASS (precision — these keep the gate deployable) -------------------
 expect 0 'bare private-repo cross-reference' \
@@ -84,8 +106,8 @@ expect 0 'two private repos, no operational detail' \
   'Both acme-alpha and acme-beta will need a follow-up for this.'
 expect 0 'credential NAME with no private repo nearby' \
   'The handler now reads SOME_API_TOKEN from the environment instead of a literal.'
-# Regression: a top-level (?i) once leaked into OPS_DETAIL and made the
-# SCREAMING_CASE credential rule match ordinary lowercase identifiers.
+# Regression: a global (?i) once leaked into the SCREAMING_CASE alternative, so
+# ordinary lowercase prose like "cache_key" counted as a credential NAME.
 expect 0 'lowercase identifier near a private repo is prose, not a credential' \
   'In acme-alpha we renamed the cache_key format for the edge.'
 expect 0 'public runner path is not an operator path' \
@@ -94,10 +116,17 @@ expect 0 'talking about the control' \
   'body-policy blocks a private repo named next to a SECRET_TOKEN; that is intended.'
 expect 0 'internal-marker stays exempt on a line naming the control' \
   'public-repo-guard exists so an internal-only doc never lands in a public body.'
-expect 0 'explicit guard:allow with a reason' \
-  'Example for the docs: acme-alpha holds EXAMPLE_SECRET — guard:allow documented-example'
+expect 0 'explicit guard:allow with a reason exempts a prose rule' \
+  'Docs example of the marker text: internal-only — guard:allow documented-example'
 expect 0 'ordinary clean body' \
   'Bumps the draft revision and regenerates the fixtures. No behaviour change.'
+# Regression risk called out in review: the gate's own docs (and any body quoting
+# them, which review bots do) name the range as 100.64.0.0/10. That is the NAME
+# of the range, not a host on it, and infra rules have no allowlist escape.
+expect 0 'the CGNAT range designation is the name of the range, not a host' \
+  'The internal-ip rule covers the 100.64.0.0/10 space by design.'
+expect 0 'the bare all-zero network address is a designation too' \
+  'Traffic in 100.64.0.0 space never leaves the tailnet.'
 # Regression: the first CI run of this job failed on its own PR, because a review
 # bot edited the body to summarize the change and quoted the marker verbatim.
 expect 0 'marker MENTIONED in straight quotes is a description' \
