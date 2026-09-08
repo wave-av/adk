@@ -2,7 +2,7 @@
  * AgentLogger — Structured log forwarding for WAVE agents
  *
  * Outputs JSON-structured logs to stdout and optionally forwards
- * to the WAVE observability platform (Dash0/Sentry).
+ * to the WAVE observability platform (Sentry + OTLP ingest).
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
