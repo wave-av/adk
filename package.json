@@ -1,7 +1,7 @@
 {
   "name": "@wave-av/adk",
   "version": "1.0.15",
-  "description": "WAVE Agent Developer Kit — Build AI agents that see, produce, and deliver video",
+  "description": "Agent development kit for WAVE, media infrastructure for the agentic internet: 5 agent templates, 10 MCP tools, an agent runtime, and framework adapters",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
