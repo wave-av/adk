@@ -1,0 +1,248 @@
+name: (reusable) Release — generate + attach SPDX SBOM
+
+# SUPPLY-001 (cw issue wave-av/claude-workstation#4803): every published
+# release must carry an SBOM asset. Before this workflow, @wave-av/adk
+# releases had none — this is what wave-av/sdks#92's registry-cleanroom check
+# reports as the gap for adk.
+#
+# adk's release.yml has NO GitHub Release step at all (it stops after `npm
+# publish`), unlike the sibling release workflows this is modelled on
+# (wave-av/mcp-server, wave-av/cli). Rather than bolting an SBOM-only step
+# onto an existing release job, this mirrors wave-av/sdk-python#54's pattern
+# for that exact situation: the two jobs below generate the SBOM, THEN create
+# the GitHub Release with the packed npm tarball AND the SBOM attached in the
+# SAME `gh release create`/`upload` call — a Release for this repo is never
+# visible without its SBOM.
+#
+# Deliberately scans the tarball packed FROM THE NPM REGISTRY
+# (`npm pack <name>@<version>`), never a local rebuild — the SBOM must
+# describe what a consumer actually installs, not a possibly nondeterministic
+# rebuild that could drift from it. Packing from the registry IS also the
+# registry-existence proof: a bad backfill tag fails here, before anything
+# touches the GitHub Release for that tag.
+#
+# Two entry points:
+#   - workflow_call (normal path): chained from release.yml as the `sbom:`
+#     job, right after `publish:`. Always passes the tag that was just
+#     published (`github.ref_name` on that tag-push run) — non-empty, so the
+#     "default to latest" branch in "Resolve target tag" below never
+#     triggers on this path.
+#   - workflow_dispatch (standalone backfill): produces the Release + SBOM
+#     for an EXISTING published npm version WITHOUT re-running the whole
+#     secret-scan + verify + publish chain — this is how 1.0.15 (this repo's
+#     first gated release, published before this workflow existed) is
+#     backfilled. `tag` defaults to the latest version on the npm dist-tag
+#     `latest` when left empty — this repo has no prior gated GitHub Release
+#     to default to instead, since the `release` job below did not exist
+#     until now.
+#
+# Idempotent: `gh release upload --clobber` makes re-running this for a tag
+# that already has a release (e.g. a second backfill dispatch) a safe
+# no-op-that-refreshes, never a failure.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to generate/attach an SBOM for (e.g. v1.0.15). Leave empty to use the latest published npm version.'
+        required: false
+        type: string
+
+# Repo-wide floor for the standalone workflow_dispatch entry point (a
+# workflow_call run is scoped by the CALLING job's own `permissions:` in
+# release.yml regardless of this block). Each job below narrows this further
+# with its own explicit `permissions:` -- this top-level block exists so a
+# future job added without one defaults to read-only, not whatever the repo's
+# default token policy happens to be.
+permissions:
+  contents: read
+
+# Serializes runs of both entry points for the same resolved tag, so a
+# workflow_dispatch backfill and a concurrent tag-push release of that same
+# tag (or two overlapping backfill dispatches) cannot run the `release` job's
+# view/create/upload check-then-act sequence concurrently. `gh release upload
+# --clobber` is idempotent regardless, so any residual race is self-healing
+# on the next run, never a permanent inconsistency.
+concurrency:
+  group: adk-release-sbom-${{ inputs.tag || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  sbom:
+    name: Generate SPDX SBOM for the published tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read   # only reads the npm registry + stages a local artifact -- no repo write
+    outputs:
+      tag: ${{ steps.resolve-tag.outputs.tag }}
+    steps:
+      # Resolve the target tag first; the "Read package.json / ..." step
+      # below reads that tag's package.json / package-lock.json CONTENT via
+      # `git show` (never by checking the tag out as the working tree -- see
+      # that step's comment for why). `inputs.tag` is populated uniformly for
+      # BOTH workflow_call and workflow_dispatch triggers.
+      - name: Resolve target tag
+        id: resolve-tag
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          PKG_NAME="@wave-av/adk"
+          TAG_NAME="$TAG_INPUT"
+          if [[ -z "$TAG_NAME" ]]; then
+            echo "no tag input given -- resolving the latest published npm version for $PKG_NAME"
+            LATEST_VERSION="$(npm view "$PKG_NAME" dist-tags.latest \
+              --registry https://registry.npmjs.org/ \
+              "--@wave-av:registry=https://registry.npmjs.org/")"
+            if [[ -z "$LATEST_VERSION" ]]; then
+              echo "::error::could not resolve the latest published npm version for $PKG_NAME"
+              exit 1
+            fi
+            TAG_NAME="v${LATEST_VERSION}"
+            echo "resolved (default) -> $TAG_NAME"
+          fi
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::TAG_NAME '$TAG_NAME' does not look like a semver tag (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "target tag: $TAG_NAME"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      # Deliberately does NOT check out the resolved TAG -- stays on this
+      # workflow's own triggering ref. A workflow_dispatch backfill can
+      # target a tag that PREDATES this workflow (e.g. v1.0.15, published
+      # before this SBOM job existed): checking that tag out as the working
+      # tree would delete scripts/sbom/generate-sbom.sh (and this workflow
+      # file itself) before either could run. fetch-depth: 0 (full history,
+      # including all tags) is what lets the next step read the TARGET tag's
+      # package.json / package-lock.json content via `git show` without
+      # checking it out.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read package.json / package-lock.json from the target tag
+        id: tag-pkg
+        env:
+          TAG_NAME: ${{ steps.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG_NAME}^{commit}" >/dev/null; then
+            echo "::error::tag '$TAG_NAME' does not exist in this repository"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/tag-pkg"
+          git show "${TAG_NAME}:package.json" > "$RUNNER_TEMP/tag-pkg/package.json"
+          if git cat-file -e "${TAG_NAME}:package-lock.json" 2>/dev/null; then
+            git show "${TAG_NAME}:package-lock.json" > "$RUNNER_TEMP/tag-pkg/package-lock.json"
+            echo "lockfile=$RUNNER_TEMP/tag-pkg/package-lock.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::tag '$TAG_NAME' has no package-lock.json in its tree -- generate-sbom.sh will fail closed rather than approximate an SBOM from re-resolved semver ranges"
+            echo "lockfile=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "pkg_json=$RUNNER_TEMP/tag-pkg/package.json" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # All pack/npm-ci/syft-install/scan/validate logic lives in
+      # scripts/sbom/generate-sbom.sh (kept out of this workflow file to keep
+      # the YAML small); this step is just wiring env -> script.
+      - name: Generate SPDX SBOM for the published tarball
+        env:
+          TAG_NAME: ${{ steps.resolve-tag.outputs.tag }}
+          TAG_PKG_JSON: ${{ steps.tag-pkg.outputs.pkg_json }}
+          TAG_LOCKFILE: ${{ steps.tag-pkg.outputs.lockfile }}
+          OUT_DIR: ${{ runner.temp }}/sbom-out
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          bash scripts/sbom/generate-sbom.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ steps.resolve-tag.outputs.tag }}
+          path: ${{ runner.temp }}/sbom-out
+          retention-days: 14
+
+  release:
+    name: Create GitHub Release (tarball + SBOM attached together)
+    needs: sbom
+    # Job-level concurrency, keyed on the RESOLVED tag (needs.sbom.outputs.tag),
+    # not the raw `inputs.tag`. The workflow-level group above is keyed on
+    # inputs.tag, which is blank for a "default to latest" backfill dispatch --
+    # that run's group ("adk-release-sbom-latest") would NOT match a concrete
+    # tag-push run's group ("adk-release-sbom-v1.0.15") even when both resolve
+    # to the SAME tag, so the workflow-level group alone cannot serialize that
+    # case. This job-level group can: it is evaluated once `sbom` has already
+    # resolved and published its `tag` output, so both entry points converge
+    # on the same key here and the view/create/upload check-then-act sequence
+    # below is never run concurrently for the same actual release.
+    concurrency:
+      group: adk-release-github-release-${{ needs.sbom.outputs.tag }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # create/upload the Release for this tag -- nothing else
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: sbom-${{ needs.sbom.outputs.tag }}
+          path: sbom-assets
+
+      - name: Create or update the GitHub Release (idempotent, tarball + SBOM together)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.sbom.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ASSETS=(sbom-assets/*)
+          if [[ "${#ASSETS[@]}" -eq 0 ]]; then
+            echo "::error::no files staged in sbom-assets/ to attach to the release"
+            exit 1
+          fi
+          echo "assets to attach: ${ASSETS[*]}"
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "release $TAG_NAME already exists -- uploading tarball + SBOM (idempotent path, --clobber)"
+            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          else
+            echo "release $TAG_NAME does not exist -- creating it with the tarball + SBOM attached in this same call"
+            TAG_VERSION="${TAG_NAME#v}"
+            PRERELEASE_FLAGS=()
+            if [[ "$TAG_VERSION" == *-* ]]; then
+              PRERELEASE_FLAGS=(--prerelease)
+            fi
+            # --verify-tag: refuse to invent a git tag out of whatever ref
+            # this job happens to run from -- the tag must already exist (it
+            # does, for every version proven live on the npm registry by the
+            # `sbom` job's `npm pack` step).
+            gh release create "$TAG_NAME" "${ASSETS[@]}" --verify-tag --title "$TAG_NAME" --generate-notes "${PRERELEASE_FLAGS[@]}"
+          fi
+
+          echo "verifying the release exists and carries both assets"
+          RELEASE_ASSETS="$(gh release view "$TAG_NAME" --json assets --jq '[.assets[].name] | join(" ")')"
+          echo "release assets: $RELEASE_ASSETS"
+          for f in "${ASSETS[@]}"; do
+            BASE="$(basename "$f")"
+            case "$RELEASE_ASSETS" in
+              *"$BASE"*) ;;
+              *)
+                echo "::error::$BASE missing from release $TAG_NAME after upload"
+                exit 1
+                ;;
+            esac
+          done
+          echo "SUPPLY-001: release $TAG_NAME carries both the packed tarball and its SPDX SBOM."
