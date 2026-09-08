@@ -1,7 +1,7 @@
 {
   "name": "@wave-av/adk",
-  "version": "1.0.2",
-  "description": "WAVE Agent Developer Kit — Build AI agents that see, produce, and deliver video",
+  "version": "1.0.15",
+  "description": "Agent development kit for WAVE, media infrastructure for the agentic internet: 5 agent templates, 10 MCP tools, an agent runtime, and framework adapters",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,10 +13,10 @@
     }
   },
   "bin": {
-    "wave-adk": "./dist/cli/index.mjs"
+    "wave-adk": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs",
+    "build": "tsup src/index.ts src/cli/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
     "lint": "eslint src/ --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
