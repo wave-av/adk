@@ -6,11 +6,18 @@
 #
 # Runs from the `sbom` job in .github/workflows/_release-sbom.yml (a reusable
 # workflow chained from release.yml), AFTER that job's "Resolve target tag"
-# step has already validated TAG_NAME's shape and the job has checked out
-# that exact tag — so `package.json` / `package-lock.json` read below reflect
-# the HISTORICAL tag being SBOM'd, not whatever the default branch currently
-# is (those can drift on a workflow_dispatch backfill: name/scope/deps change
-# over time).
+# and "Read package.json / package-lock.json from the target tag" steps.
+#
+# IMPORTANT: the caller does NOT check out the target tag as its working
+# tree. A workflow_dispatch backfill can target a tag that PREDATES this
+# script (e.g. v1.0.15, published before this SBOM job existed) -- checking
+# that tag out wholesale would delete scripts/sbom/generate-sbom.sh itself
+# before it could run. Instead the caller stays on the WORKFLOW's own
+# revision (guaranteeing this script exists) and passes in the two files
+# whose CONTENT must reflect the historical tag -- package.json and
+# package-lock.json -- as TAG_PKG_JSON / TAG_LOCKFILE, fetched via `git show
+# <tag>:<path>` against a full-history checkout. Everything below reads
+# THOSE files, never a bare `./package.json` / `./package-lock.json` from cwd.
 #
 # Deliberately pulls the tarball from the npm REGISTRY (`npm pack <name>@<ver>`)
 # rather than repacking the locally built tree — the SBOM must describe what a
@@ -26,8 +33,16 @@
 # visible without its SBOM.
 #
 # Inputs (env):
-#   TAG_NAME  - the exact tag to SBOM (e.g. "v1.0.15"), already validated
-#   OUT_DIR   - existing directory to stage the tarball + SBOM asset into
+#   TAG_NAME     - the exact tag to SBOM (e.g. "v1.0.15"), already validated
+#   OUT_DIR      - existing directory to stage the tarball + SBOM asset into
+#   TAG_PKG_JSON - path to that tag's package.json (fetched via `git show`)
+#   TAG_LOCKFILE - path to that tag's package-lock.json, or "" if that tag
+#                  predates the lockfile — see step 2 below: this script
+#                  FAILS CLOSED rather than approximate an SBOM from
+#                  semver-range resolution against whatever the registry's
+#                  latest-satisfying versions happen to be today, which could
+#                  silently describe different (newer) dependency versions
+#                  than the ones consumers actually received for that release.
 #
 # Exits non-zero on any failure. Scoped supply-chain guarantees: the syft
 # binary is pinned to an exact version and verified against syft's OWN
@@ -35,18 +50,38 @@
 # over HTTPS) before it is ever executed — no installer script, no floating
 # tag/branch ref. Every production dependency pulled into node_modules is
 # verified against the SRI integrity hash recorded in the tag's own
-# package-lock.json via `npm ci` (falls back to unverified `npm install` only
-# when that tag has no lockfile, logged as a warning). The top-level tarball
-# itself is fetched over HTTPS from the npm registry by package name + exact
-# version (no local checksum pin) — the same trust boundary this workflow's
-# `publish` job already relies on (OIDC trusted publishing + `--provenance`).
+# package-lock.json via `npm ci`. The top-level tarball itself is fetched
+# over HTTPS from the npm registry by package name + exact version (no local
+# checksum pin) — the same trust boundary this workflow's `publish` job
+# already relies on (OIDC trusted publishing + `--provenance`).
 set -euo pipefail
 
 : "${TAG_NAME:?TAG_NAME required (resolve + validate it before calling this script)}"
 : "${OUT_DIR:?OUT_DIR required (existing directory to stage outputs into)}"
+: "${TAG_PKG_JSON:?TAG_PKG_JSON required (path to package.json for the target tag)}"
+: "${TAG_LOCKFILE:=}"
 
 if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]]; then
   echo "::error::TAG_NAME '$TAG_NAME' does not look like a semver tag (expected vX.Y.Z)"
+  exit 1
+fi
+if [[ ! -f "$TAG_PKG_JSON" ]]; then
+  echo "::error::TAG_PKG_JSON '$TAG_PKG_JSON' does not exist"
+  exit 1
+fi
+# Fail closed, not soft: an SBOM built from semver-range resolution against
+# TODAY's registry state can materially misdescribe what a consumer actually
+# received for this release — worse than no SBOM at all for SUPPLY-001's
+# purpose. Every tag produced by the gated `publish` job in release.yml has a
+# lockfile (npm ci is required for that job to have passed); this only
+# refuses tags that predate this repo's gate (e.g. v1.0.6 and earlier),
+# which should not carry an approximated SBOM anyway.
+if [[ -z "$TAG_LOCKFILE" ]]; then
+  echo "::error::tag '$TAG_NAME' has no package-lock.json — refusing to generate an approximate SBOM from re-resolved semver ranges. This tag predates this repo's gated release path and is not a supported SBOM/backfill target."
+  exit 1
+fi
+if [[ ! -f "$TAG_LOCKFILE" ]]; then
+  echo "::error::TAG_LOCKFILE '$TAG_LOCKFILE' does not exist"
   exit 1
 fi
 mkdir -p "$OUT_DIR"
@@ -64,7 +99,7 @@ echo "target tag: $TAG_NAME"
 #    fails here, before anything touches the GitHub Release for this tag.
 # ---------------------------------------------------------------------------
 PKG_VERSION="${TAG_NAME#v}"
-PKG_NAME="$(node -p "require('./package.json').name")"
+PKG_NAME="$(node -p "require('${TAG_PKG_JSON}').name")"
 echo "packing $PKG_NAME@$PKG_VERSION from the npm registry"
 
 # Pass BOTH the default --registry and an explicit scope override
@@ -114,22 +149,17 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Resolve the real production dependency tree into node_modules so the
 #    SBOM covers what a consumer's `npm install` actually pulls in, not just
-#    the top-level artifact. Prefer `npm ci` against the LOCKFILE FROM THIS
-#    EXACT TAG (checked out by the caller alongside this script) for exact,
+#    the top-level artifact. `npm ci` against TAG_LOCKFILE (the LOCKFILE FROM
+#    THIS EXACT TAG, already validated non-empty above) gives exact,
 #    reproducible version pins — the same lockfile the `publish` job itself
-#    used — rather than re-resolving package.json's semver RANGES against
+#    used — never a re-resolve of package.json's semver RANGES against
 #    whatever the registry's latest-satisfying versions are today, which
 #    would let a later backfill run describe different (newer) dependency
 #    versions than the ones consumers actually received for this release.
 # ---------------------------------------------------------------------------
-echo "resolving production dependencies for the SBOM"
-if [[ -f "package-lock.json" ]]; then
-  cp "package-lock.json" "$PKG_DIR/package-lock.json"
-  ( cd "$PKG_DIR" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund )
-else
-  echo "::warning title=no lockfile at $TAG_NAME::falling back to npm install against semver ranges — resolved versions may drift from what was originally published"
-  ( cd "$PKG_DIR" && npm install --omit=dev --ignore-scripts --no-audit --no-fund )
-fi
+echo "resolving production dependencies for the SBOM (npm ci against $TAG_LOCKFILE)"
+cp "$TAG_LOCKFILE" "$PKG_DIR/package-lock.json"
+( cd "$PKG_DIR" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund )
 
 # ---------------------------------------------------------------------------
 # 3. Install syft (pinned release binary, verified against syft's OWN
