@@ -49,14 +49,14 @@
   },
   "homepage": "https://wave.online/developers/adk",
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@types/node": "^25.9.2",
-    "eslint": "^9.39.4",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.0",
+    "eslint": "^10.9.1",
     "tsup": "^8.0.0",
-    "typescript": "^5.9.0",
-    "typescript-eslint": "^8.60.1"
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.69.0"
   }
 }
