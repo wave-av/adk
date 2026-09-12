@@ -1,6 +1,7 @@
 name: public-repo-guard
 
-# Pre-publication content gate for WAVE public repos. Two complementary checks:
+# Pre-publication content gate for WAVE public repos. Two complementary checks,
+# split across TWO workflow files (this one, plus public-repo-guard-body.yml):
 #   1. gitleaks  — formatted secrets (API keys, tokens, private keys) in the tree.
 #   2. content-policy.sh — WAVE-specific leaks gitleaks misses: live Stripe account
 #      IDs, hardcoded Cloudflare account_ids, developer absolute paths, references
@@ -13,19 +14,65 @@ name: public-repo-guard
 # wave-av/.github must not be able to alter another repo's secret scanner). The
 # gitleaks binary is version-pinned AND SHA-256-verified before it runs.
 #
-# To install on a new repo, copy all three files together:
+# To install on a new repo, copy all six files together (the guard job RUNS the
+# body-policy fixtures as a step, so the test file is part of the install unit,
+# not an optional extra):
 #   .github/workflows/public-repo-guard.yml
+#   .github/workflows/public-repo-guard-body.yml
 #   .gitleaks.toml
 #   scripts/public-repo-guard/content-policy.sh
+#   scripts/public-repo-guard/body-policy.sh
+#   scripts/public-repo-guard/tests/body-policy.test.sh
 #
 # Scan scope: the published working TREE (gitleaks --no-git), NOT git history. The
 # goal is "what is public right now is clean", so a shallow checkout is sufficient.
 #
 # Allowlisting: annotate a verified-safe line with `# guard:allow <reason>`, add a
 # path glob to a repo-root `.guardignore`, or extend the repo-local `.gitleaks.toml`.
-
+#
+# WHY THIS IS A SEPARATE WORKFLOW FROM public-repo-guard-body.yml (an earlier draft
+# of this change put both jobs in this one file — see the incident below):
+#
+# The `guard` job below produces the check-run named "Secrets + content policy",
+# which is the REQUIRED status context in this repo's branch-protection ruleset.
+# Two failure modes are possible for any job that produces a required check-run
+# from a shared, comment/review-triggered `on:` block, and BOTH were hit in
+# production before this split:
+#
+#   (a) MASKING: if this job's `on:` trigger set includes the comment/review events
+#       the BODY scan needs (the tree scan does not) and the job then uses a
+#       job-level `if:` to skip those events (because the tree hasn't changed),
+#       GitHub still publishes a check-run named "Secrets + content policy" with
+#       conclusion `skipped` on that event. Branch protection treats `skipped` as
+#       passing, and the newest check-run for a name wins — so a bare comment could
+#       flip an already-FAILED required tree scan green with nothing re-examining
+#       the tree.
+#
+#   (b) CHURN / FALSE BLOCK: making the job run for real on every comment event,
+#       combined with `cancel-in-progress: true` (needed so a genuine new commit
+#       supersedes a stale scan promptly), means a burst of review-bot comments —
+#       which do not change the tree at all — repeatedly re-fires and cancels the
+#       SAME job. Every cancelled run leaves a `cancelled` check-run attached to
+#       the commit under the required name. Observed live in wave-av/cli PR 68:
+#       four review-bot comments within 68s produced seven check-runs named
+#       "Secrets + content policy" (five cancelled, two success); the checks tab
+#       showed the latest as green, but the commit's status-check rollup reported
+#       FAILURE and the PR was permanently MERGEABLE/BLOCKED even though the gate
+#       had genuinely passed.
+#
+# (a) and (b) are the SAME structural problem: this job's required check-run name
+# was reachable from an `on:` trigger set that also had to serve comment/review
+# events for the (unrelated) body scan. Splitting into two workflow FILES — not
+# just two jobs — removes the shared trigger set entirely: this file's `on:` block
+# now lists ONLY events that can change the tree. A review comment or a title/body
+# edit never matches this workflow's trigger at all, so GitHub never runs it and
+# never publishes ANY check-run — skipped, cancelled, or otherwise — under the
+# required name for that event. There is nothing left to mask and nothing left to
+# cancel. Coverage is unchanged: every event that can actually alter the published
+# tree still gets a real, non-skippable gitleaks + content-policy run.
 on:
   pull_request:
+    types: [opened, reopened, synchronize]
   push:
     branches: [main, master]
   workflow_dispatch:
@@ -34,19 +81,35 @@ on:
   # never reports on the queue's temporary ref and every queued PR waits forever.
   merge_group:
 
+# `pull_request`, deliberately NOT `pull_request_target`: a fork PR must never get
+# a write token or repo secrets just because a gate wanted to read the tree.
 permissions:
   contents: read
-
-concurrency:
-  group: public-repo-guard-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   guard:
     name: Secrets + content policy
+    # No job-level `if:` — deliberately. The `on:` block above already scopes this
+    # job to exactly the tree-changing events, so every triggering event is a real
+    # run: never skipped, never a candidate for the masking bug described above,
+    # and never skipped out from under the merge queue.
+    concurrency:
+      # cancel-in-progress is TRUE here and it is now safe: the only rapid
+      # retrigger this workflow can see is `synchronize` (a new commit landing
+      # while a prior scan of the OLD tree is still running), and superseding a
+      # stale in-flight scan with a fresh one for the new tree is exactly the
+      # right behaviour. Comment/review bursts cannot reach this workflow at all
+      # (see the block comment above), so this can no longer produce the
+      # cancelled-run pileup that wedged wave-av/cli PR 68.
+      group: public-repo-guard-tree-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # This job only reads the tree — never leave the token sitting in
+          # .git/config while repo-supplied scripts execute in the workspace.
+          persist-credentials: false
 
       # gitleaks' GitHub Action requires a paid license for organizations; the CLI
       # itself is MIT-licensed and free. Pin the version AND verify the release
@@ -68,10 +131,35 @@ jobs:
       - name: gitleaks (secret scan — published tree)
         run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --no-banner --exit-code 1
 
-      - name: Install ripgrep
-        run: command -v rg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+      # Both policy scripts use `rg -P` (PCRE2). Ubuntu's apt ripgrep is built
+      # WITHOUT PCRE2, so `rg -P` exits 2 there and the scripts fail closed —
+      # red on every run, which gets a gate switched off. Accept a preinstalled
+      # rg only if it actually has PCRE2; otherwise install the official release
+      # binary (PCRE2 compiled in), pinned and checksum-verified like gitleaks.
+      - name: Install ripgrep (pinned + checksum-verified, PCRE2 build)
+        env:
+          RIPGREP_VERSION: "14.1.1"
+          RIPGREP_SHA256: "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
+        run: |
+          if command -v rg >/dev/null && rg --pcre2-version >/dev/null 2>&1; then
+            echo "using preinstalled $(rg --version | head -n1) with PCRE2"; exit 0
+          fi
+          curl -fsSL --proto '=https' --tlsv1.2 -o ripgrep.tar.gz \
+            "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${RIPGREP_SHA256}  ripgrep.tar.gz" | sha256sum -c -
+          tar -xzf ripgrep.tar.gz --strip-components=1 "ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl/rg"
+          sudo install -m 0755 rg /usr/local/bin/rg
+          rm -f rg ripgrep.tar.gz
+          rg --pcre2-version
 
       - name: content policy (WAVE trade-secret / internal-leak gate)
         env:
           GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
         run: bash scripts/public-repo-guard/content-policy.sh .
+
+      # The body gate's own fixtures. Its negatives are the load-bearing half — a
+      # leak gate that blocks legitimate cross-repo references gets switched off,
+      # and then it protects nothing. Runs here so a regression is caught by CI
+      # rather than by a leak.
+      - name: body policy self-test (fixtures)
+        run: bash scripts/public-repo-guard/tests/body-policy.test.sh
