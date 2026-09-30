@@ -6,11 +6,8 @@ import { WaveAgent } from '../agents/WaveAgent';
 vi.spyOn(process.stdout, 'write').mockReturnValue(true);
 vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 
-// Mock fetch globally
-const fetchMock = vi.fn().mockResolvedValue({
-  ok: true,
-  json: () => Promise.resolve({}),
-});
+// Mock fetch globally (fresh Response per call: a body can only be read once)
+const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
 vi.stubGlobal('fetch', fetchMock);
 
 describe('AgentRuntime', () => {
@@ -45,9 +42,7 @@ describe('AgentRuntime', () => {
   it('getHealth returns healthy after start', async () => {
     runtime = new AgentRuntime(agent, { healthPort: 0 });
 
-    // Mock agent start to avoid real API call
-    vi.spyOn(agent, 'start').mockResolvedValue();
-
+    // start() makes no API call for an unregistered agent (the default)
     await runtime.start();
     const health = runtime.getHealth();
 
@@ -69,7 +64,6 @@ describe('AgentRuntime', () => {
 
   it('stop sets agent to not running', async () => {
     runtime = new AgentRuntime(agent, { healthPort: 0 });
-    vi.spyOn(agent, 'start').mockResolvedValue();
 
     await runtime.start();
     expect(agent.isRunning).toBe(true);
@@ -107,20 +101,35 @@ describe('AgentRuntime', () => {
     expect(slowShutdown).toHaveBeenCalledOnce();
   });
 
-  it('sends heartbeat on start', async () => {
+  it('unregistered agent: local heartbeat only, no network call', async () => {
     runtime = new AgentRuntime(agent, {
       healthPort: 0,
       heartbeatIntervalMs: 60_000,
     });
-    vi.spyOn(agent, 'start').mockResolvedValue();
 
     await runtime.start();
+    await new Promise((r) => setImmediate(r));
 
-    // First call is agent register, second is heartbeat
-    const heartbeatCall = fetchMock.mock.calls.find(
-      (call: unknown[]) => (call[0] as string).includes('/heartbeat')
-    );
-    expect(heartbeatCall).toBeDefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(runtime.getHealth().lastHeartbeat).not.toBeNull();
+  });
+
+  it('registered agent: heartbeat goes to POST /v1/agents with action heartbeat', async () => {
+    const registered = new WaveAgent({
+      apiKey: 'test-key',
+      agentName: 'test-agent',
+      agentType: 'stream_monitor',
+      register: true,
+    });
+    runtime = new AgentRuntime(registered, { healthPort: 0, heartbeatIntervalMs: 60_000 });
+
+    await runtime.start();
+    await new Promise((r) => setImmediate(r));
+
+    const bodies = fetchMock.mock.calls
+      .filter((call: unknown[]) => String(call[0]) === 'https://api.wave.online/v1/agents')
+      .map((call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string));
+    expect(bodies.map((b: { action: string }) => b.action)).toEqual(['register', 'heartbeat']);
   });
 
   it('stop is idempotent', async () => {
@@ -132,5 +141,18 @@ describe('AgentRuntime', () => {
     await runtime.stop(); // second call should be no-op
 
     expect(agent.isRunning).toBe(false);
+  });
+
+  it('stop removes the SIGTERM/SIGINT handlers start installed', async () => {
+    const before = { term: process.listenerCount('SIGTERM'), int: process.listenerCount('SIGINT') };
+    runtime = new AgentRuntime(agent, { healthPort: 0 });
+
+    await runtime.start();
+    expect(process.listenerCount('SIGTERM')).toBe(before.term + 1);
+    expect(process.listenerCount('SIGINT')).toBe(before.int + 1);
+
+    await runtime.stop();
+    expect(process.listenerCount('SIGTERM')).toBe(before.term);
+    expect(process.listenerCount('SIGINT')).toBe(before.int);
   });
 });

@@ -23,6 +23,7 @@ export interface AgentRuntimeConfig {
   readonly heartbeatIntervalMs?: number;
   readonly shutdownTimeoutMs?: number;
   readonly logLevel?: LogLevel;
+  /** Full URL of your log collector endpoint; batches are POSTed as `{ logs: [...] }`. */
   readonly logForwardUrl?: string;
   readonly onShutdown?: () => Promise<void>;
 }
@@ -45,6 +46,8 @@ export class AgentRuntime {
   private startedAt: Date | null = null;
   private lastHeartbeatAt: Date | null = null;
   private shutdownInProgress = false;
+  /** Detaches the SIGTERM/SIGINT handlers start() installed, so a stopped runtime leaves none behind. */
+  private removeSignalHandlers: () => void = () => {};
 
   constructor(agent: WaveAgent, config: AgentRuntimeConfig = {}) {
     this.agent = agent;
@@ -62,6 +65,7 @@ export class AgentRuntime {
       level: this.config.logLevel,
       forwardUrl: this.config.logForwardUrl,
       apiKey: agent['config'].apiKey,
+      waveBaseUrl: agent['config'].baseUrl,
     });
   }
 
@@ -99,18 +103,24 @@ export class AgentRuntime {
       this.heartbeatTimer = null;
     }
 
-    // Run custom shutdown handler with timeout
+    this.removeSignalHandlers();
+
+    // Run custom shutdown handler with timeout. The timer is cleared either way,
+    // so a fast handler does not hold the process open for shutdownTimeoutMs.
+    let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         this.config.onShutdown(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Shutdown handler timeout')), this.config.shutdownTimeoutMs)
-        ),
+        new Promise<never>((_, reject) => {
+          shutdownTimer = setTimeout(() => reject(new Error('Shutdown handler timeout')), this.config.shutdownTimeoutMs);
+        }),
       ]);
     } catch (error: unknown) {
       this.logger.error('Shutdown handler failed', {
         error: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      clearTimeout(shutdownTimer);
     }
 
     // Stop agent
@@ -124,10 +134,11 @@ export class AgentRuntime {
       this.server = null;
     }
 
-    // Flush logs
-    await this.logger.flush();
-
     this.logger.info('Agent runtime stopped');
+
+    // Flush logs, then stop the logger's auto-flush timer
+    await this.logger.flush();
+    this.logger.destroy();
   }
 
   getHealth(): AgentHealthStatus {
@@ -199,12 +210,20 @@ export class AgentRuntime {
   private startHeartbeat(): void {
     const sendHeartbeat = async () => {
       try {
-        await this.agent['apiCall']('POST', '/v1/agents/heartbeat', {
-          agentName: this.agent['config'].agentName,
-          status: this.agent.isRunning ? 'healthy' : 'unhealthy',
-          uptime: this.startedAt ? Date.now() - this.startedAt.getTime() : 0,
-          stats: this.agent.getUsageStats(),
-        });
+        // A platform heartbeat only means something for an agent the platform
+        // knows about. Unregistered agents (the default) keep a local
+        // heartbeat for /health and make no network call.
+        if (this.agent.isRegistered) {
+          await this.agent['apiCall']('agents', {
+            body: {
+              action: 'heartbeat',
+              name: this.agent['config'].agentName,
+              status: this.agent.isRunning ? 'healthy' : 'unhealthy',
+              uptime: this.startedAt ? Date.now() - this.startedAt.getTime() : 0,
+              stats: this.agent.getUsageStats(),
+            },
+          }, { maxRetries: 0 });
+        }
         this.lastHeartbeatAt = new Date();
       } catch (error: unknown) {
         this.logger.warn('Heartbeat failed', {
@@ -227,7 +246,13 @@ export class AgentRuntime {
       process.exit(0);
     };
 
-    process.once('SIGTERM', () => void shutdown('SIGTERM'));
-    process.once('SIGINT', () => void shutdown('SIGINT'));
+    const onTerm = () => void shutdown('SIGTERM');
+    const onInt = () => void shutdown('SIGINT');
+    process.once('SIGTERM', onTerm);
+    process.once('SIGINT', onInt);
+    this.removeSignalHandlers = () => {
+      process.removeListener('SIGTERM', onTerm);
+      process.removeListener('SIGINT', onInt);
+    };
   }
 }

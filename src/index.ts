@@ -9,9 +9,11 @@
  * import { WaveAgent, StreamMonitorAgent } from '@wave-av/adk';
  *
  * const agent = new StreamMonitorAgent({
- *   apiKey: process.env.WAVE_AGENT_KEY,
+ *   apiKey: process.env.WAVE_AGENT_KEY!,
+ *   agentName: 'my-monitor',
+ *   streamIds: [process.env.WAVE_STREAM_ID!],
  *   onQualityDrop: async (alert) => {
- *     await agent.tools.switchToBackup(alert.streamId);
+ *     console.log(`${alert.streamId} went ${alert.status}`);
  *   },
  * });
  *
@@ -34,7 +36,15 @@ export { ModerationAgent } from './templates/ModerationAgent';
 export { CaptionAgent } from './templates/CaptionAgent';
 
 // Agent tools (MCP-compatible)
-export { AgentToolkit, type AgentTool } from './tools/AgentToolkit';
+export { AgentToolkit, type AgentTool, type AgentToolParameter } from './tools/AgentToolkit';
+
+// Errors and the WAVE API routes the ADK calls
+export { WaveToolError } from './errors';
+export { WAVE_ROUTES, type WaveRoute, type WaveRouteName } from './routes';
+
+// Template result types
+export type { ModerationVerdict } from './templates/ModerationAgent';
+export type { CaptionJob, CaptionDownload } from './templates/CaptionAgent';
 
 // Framework adapters
 export { createMastraTools, createWaveMCPConfig, createStreamMonitorStep } from './adapters/mastra';

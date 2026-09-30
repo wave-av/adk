@@ -1,1 +1,1 @@
-export { AgentToolkit, type AgentTool } from './AgentToolkit';
+export { AgentToolkit, WaveToolError, type AgentTool, type AgentToolParameter } from './AgentToolkit';

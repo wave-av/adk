@@ -10,8 +10,20 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export interface AgentLoggerConfig {
   readonly agentName: string;
   readonly level: LogLevel;
+  /**
+   * Full URL of the log collector endpoint (batches are POSTed as
+   * `{ logs: [...] }`). Empty disables forwarding. The WAVE API has no
+   * log-ingest operation, so this is your own collector.
+   */
   readonly forwardUrl: string;
   readonly apiKey: string;
+  /**
+   * WAVE API base URL. The WAVE key is attached to a forward only when
+   * `forwardUrl` is on this origin, so it never leaks to a third-party collector.
+   */
+  readonly waveBaseUrl?: string;
+  /** Extra headers for the collector (for example its own auth token). */
+  readonly forwardHeaders?: Record<string, string>;
 }
 
 interface LogEntry {
@@ -66,21 +78,35 @@ export class AgentLogger {
     const entries = this.buffer.splice(0, this.buffer.length);
 
     try {
-      await fetch(`${this.config.forwardUrl}/v1/agents/logs`, {
+      const response = await fetch(this.config.forwardUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          ...(this.sendsWaveKey() ? { Authorization: `Bearer ${this.config.apiKey}` } : {}),
           'Content-Type': 'application/json',
           'X-Wave-Agent': this.config.agentName,
+          ...this.config.forwardHeaders,
         },
         body: JSON.stringify({ logs: entries }),
       });
+      if (!response.ok) {
+        throw new Error(`log forward failed: HTTP ${response.status}`);
+      }
     } catch {
       // Re-add entries on failure (drop oldest if buffer is full)
       const remaining = this.maxBufferSize - this.buffer.length;
       if (remaining > 0) {
         this.buffer.unshift(...entries.slice(-remaining));
       }
+    }
+  }
+
+  private sendsWaveKey(): boolean {
+    try {
+      const target = new URL(this.config.forwardUrl).origin;
+      const wave = new URL(this.config.waveBaseUrl ?? 'https://api.wave.online').origin;
+      return target === wave;
+    } catch {
+      return false;
     }
   }
 

@@ -109,7 +109,7 @@ export function createClipNode(config: {
     }
 
     const clip = await clipTool.handler({
-      streamId: state.streamId as string,
+      recordingId: (state.recordingId ?? state.streamId) as string,
       startTime: state.clipStart as number,
       endTime: state.clipEnd as number,
     });
