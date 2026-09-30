@@ -1,0 +1,87 @@
+src/agents/AgentRuntime.ts
+  s_13ccc7d9001218::t_9cd1886296f0a3 249-256
+  s_13ccc7d9001218::t_eda2a50fbaeee3 138
+  s_13ccc7d9001218::t_4d5c7e3458bd32 106-110,114-116,122-123
+  s_13ccc7d9001218::t_6a0c44aeb49d0b 49-50
+  s_13ccc7d9001218::t_8f2e9e365641de 139-141
+  s_13ccc7d9001218::t_37e34a9535f7d9 26,68,213-226
+src/__tests__/AgentRuntime.test.ts
+  s_13ccc7d9001218::t_4c8dc1b13bccfc 115,126,145-157
+  s_13ccc7d9001218::t_e059509819121f 113-114
+  s_13ccc7d9001218::t_1145da02fe0816 116-118,123-125
+  s_13ccc7d9001218::t_d9a7247cde027f 127-129
+  s_13ccc7d9001218::t_b22bf2565b2830 9-10,45,104,111,119-122,130-132
+src/__tests__/contract.test.ts
+  s_13ccc7d9001218::t_9112c3a7a28ad2 45
+  s_13ccc7d9001218::t_56238da6a20aae 42-44
+  s_13ccc7d9001218::t_6e09a06b0ff44a 46-48
+  s_13ccc7d9001218::t_2e2b07782b3499 1-41,49-149
+scripts/smoke-quickstart.mjs
+  s_13ccc7d9001218::t_47e4f30be28423 32-34
+  s_13ccc7d9001218::t_279c4a23e902ce 35-36
+  s_13ccc7d9001218::t_5dd68d44a22a8f 8-11,13-15,17-19,21,23-30,38-39,43-45,47,49-58,61-62
+contract/openapi-operations.json
+  s_13ccc7d9001218::t_008335c7c79ef0 1-261
+scripts/live-contract.mjs
+  s_13ccc7d9001218::t_e4435f7514f45e 1-153
+scripts/sync-contract.mjs
+  s_13ccc7d9001218::t_faaff08e5d5eef 1-54
+src/__tests__/adapters.test.ts
+  s_13ccc7d9001218::t_48f7eb4ef85e20 2,32-53,98-111
+src/__tests__/agents.test.ts
+  s_13ccc7d9001218::t_6499b15bb5e298 1-136
+src/__tests__/helpers.ts
+  s_13ccc7d9001218::t_c1ea58b511e61e 1-41
+src/__tests__/toolkit.test.ts
+  s_13ccc7d9001218::t_7af54ce2d9c80c 1-113
+src/adapters/langgraph.ts
+  s_13ccc7d9001218::t_f0ce9cf9eac5a4 112
+src/adapters/livekit.ts
+  s_13ccc7d9001218::t_20b4b17bbdf0b0 12-13,72-73,77-90
+src/adapters/mastra.ts
+  s_13ccc7d9001218::t_159d45d06a0720 68,71-73,75-76,80-81,83
+src/agents/AgentLogger.ts
+  s_13ccc7d9001218::t_cd4a71f89181ba 13-17,20-26,81,84,87,91-93,103-112
+src/agents/WaveAgent.ts
+  s_13ccc7d9001218::t_c0ffe953977d27 9-11,20-26,37,41,44,47,56-60,62-73,99-109,114-119,121-148,153-155,158-172,175-176,180,184,192
+src/errors.ts
+  s_13ccc7d9001218::t_104e7950b0385d 1-142
+src/http.ts
+  s_13ccc7d9001218::t_379e19a77840d9 1-83
+src/index.ts
+  s_13ccc7d9001218::t_1299dfdf1f9271 12-14,16,39-47
+src/routes.ts
+  s_13ccc7d9001218::t_3cdd8472884f94 1-72
+src/templates/AutoProducerAgent.ts
+  s_13ccc7d9001218::t_fb33cae8993af0 6-9,34-41,46-47,52-53,58-59
+src/templates/CaptionAgent.ts
+  s_13ccc7d9001218::t_29dda4acab312e 2,4-6,10,13,15,17,22-34,38,43,48,50-51,53,57-65,67-68,71-88
+src/templates/ClipFactoryAgent.ts
+  s_13ccc7d9001218::t_f146e919dc776b 4-5,13,15,21-25,29,35,44,53-59
+src/templates/ModerationAgent.ts
+  s_13ccc7d9001218::t_73c234a7a20894 4-8,12,18,20,22,24,30-39,43,48,56-57,60-76,78-94,97-98
+src/templates/StreamMonitorAgent.ts
+  s_13ccc7d9001218::t_39a1e4523f52ad 2,4-7,11,17,25,29-35,41,46-53,63,67-69,82-87,89,92-96,103-105
+src/tools/AgentToolkit.ts
+  s_13ccc7d9001218::t_ab184be1ea071b 6-9,13-25,30,35-49,55-56,61-70,75-120,125,127-129,132,136,141,145,147-149,152-155,159,163,166,170,177,181,183-185,188-195,199,201-203,206,210,213,216-223,227,231-232,235-239,243,246-255,258-259,264-286,288,294-302,304,309-329,331
+src/tools/index.ts
+  s_13ccc7d9001218::t_f5213b061f98de 1
+src/types.ts
+  s_13ccc7d9001218::t_5a1c554b0f7363 38,42-43,49-50,62-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "bf99b487e199d0d684549744b30eac585d522f27",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
