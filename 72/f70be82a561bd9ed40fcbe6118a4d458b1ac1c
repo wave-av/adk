@@ -1,0 +1,30 @@
+src/__tests__/AgentLogger.test.ts
+  s_13ccc7d9001218::t_18e63a77866177 164,170-193
+  s_13ccc7d9001218::t_a8012410f9ad60 159-163,165-169,194-242
+CHANGELOG.md
+  s_13ccc7d9001218::t_4b27f8b9c58f4f 78-84
+src/agents/AgentLogger.ts
+  s_13ccc7d9001218::t_b3310dc614c671 206,208-210
+  s_13ccc7d9001218::t_b61b5f08e9146b 47,49-52,56-60
+  s_13ccc7d9001218::t_5cf05586ea2f82 92-96,99-100,102-103,105-107,109-118,120-130,144,151-153,158-163,165
+  s_13ccc7d9001218::t_289128c1beeef2 164
+  s_13ccc7d9001218::t_1d439ad5be2a1e 166
+src/agents/AgentRuntime.ts
+  s_13ccc7d9001218::t_a62be05951aea8 149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "72f70be82a561bd9ed40fcbe6118a4d458b1ac1c",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
