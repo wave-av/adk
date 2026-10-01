@@ -44,10 +44,20 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 export class AgentLogger {
   private readonly config: AgentLoggerConfig;
   private readonly buffer: LogEntry[] = [];
+  /** A full buffer triggers a forward. */
   private readonly maxBufferSize = 100;
+  /** Hard cap on records held while the collector is slow or down; the oldest go first. */
+  private readonly maxPending = 1_000;
+  /** A forward that takes longer than this counts as failed, so shutdown is never stuck behind it. */
+  private readonly forwardTimeoutMs = 10_000;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   /** The forward currently on the wire; it never rejects. */
   private inFlight: Promise<boolean> | null = null;
+  /** The one flush waiting for `inFlight`. Every later caller shares it. */
+  private queued: Promise<boolean> | null = null;
+  /** The last forward failed: a full buffer waits for the periodic flush instead of retrying at once. */
+  private failing = false;
+  private dropped = 0;
 
   constructor(config: AgentLoggerConfig) {
     this.config = config;
@@ -79,27 +89,45 @@ export class AgentLogger {
     return this.buffer.length;
   }
 
+  /** Records dropped (oldest first) because the collector could not keep up. */
+  get droppedCount(): number {
+    return this.dropped;
+  }
+
   /**
    * Forward buffered records to the collector. Resolves `true` when nothing is
-   * left to send, `false` when the collector refused or was unreachable (the
-   * records are put back in the buffer for the next flush).
+   * left to send, `false` when the collector refused, timed out or was
+   * unreachable (the records go back in the buffer for the next flush).
    *
-   * Flushes run one at a time. A flush that starts while a periodic or
-   * buffer-full forward is still on the wire waits for it first, so it never
+   * At most one forward is on the wire and at most one flush waits behind it.
+   * A flush that starts while a forward is in flight waits for it, so it never
    * reports success just because that forward had already emptied the buffer;
-   * if the earlier forward failed, its re-buffered records are sent again here.
+   * if the earlier forward failed, its re-buffered records are sent again. Every
+   * caller that arrives while a flush is already waiting shares that flush, so a
+   * slow or failing collector costs two requests, not one per log line.
    */
-  async flush(): Promise<boolean> {
-    while (this.inFlight) await this.inFlight;
-    if (this.buffer.length === 0 || !this.config.forwardUrl) return true;
+  flush(): Promise<boolean> {
+    if (this.queued) return this.queued;
+    if (!this.inFlight) return this.send();
+    const queued = this.inFlight.then(() => {
+      this.queued = null;
+      return this.send();
+    });
+    this.queued = queued;
+    return queued;
+  }
 
-    const forward = this.forward(this.buffer.splice(0, this.buffer.length));
-    this.inFlight = forward;
-    try {
-      return await forward;
-    } finally {
-      if (this.inFlight === forward) this.inFlight = null;
-    }
+  /** Start one forward of everything buffered. Callers ensure nothing is in flight. */
+  private send(): Promise<boolean> {
+    if (this.buffer.length === 0 || !this.config.forwardUrl) return Promise.resolve(true);
+
+    const sent: Promise<boolean> = this.forward(this.buffer.splice(0, this.buffer.length)).then((ok) => {
+      this.failing = !ok;
+      if (this.inFlight === sent) this.inFlight = null;
+      return ok;
+    });
+    this.inFlight = sent;
+    return sent;
   }
 
   private async forward(entries: LogEntry[]): Promise<boolean> {
@@ -113,18 +141,26 @@ export class AgentLogger {
           ...this.config.forwardHeaders,
         },
         body: JSON.stringify({ logs: entries }),
+        signal: AbortSignal.timeout(this.forwardTimeoutMs),
       });
       if (!response.ok) {
         throw new Error(`log forward failed: HTTP ${response.status}`);
       }
       return true;
     } catch {
-      // Re-add entries on failure (drop oldest if buffer is full)
-      const remaining = this.maxBufferSize - this.buffer.length;
-      if (remaining > 0) {
-        this.buffer.unshift(...entries.slice(-remaining));
-      }
+      // Put the records back ahead of anything logged since, keeping the newest.
+      this.buffer.unshift(...entries);
+      this.trim();
       return false;
+    }
+  }
+
+  /** Keep at most `maxPending` records, dropping the oldest. */
+  private trim(): void {
+    const excess = this.buffer.length - this.maxPending;
+    if (excess > 0) {
+      this.buffer.splice(0, excess);
+      this.dropped += excess;
     }
   }
 
@@ -167,9 +203,11 @@ export class AgentLogger {
     // Buffer for forwarding
     if (this.config.forwardUrl) {
       this.buffer.push(entry);
+      this.trim();
 
-      // Auto-flush if buffer is full
-      if (this.buffer.length >= this.maxBufferSize) {
+      // Forward early when the buffer is full, unless the collector just failed:
+      // then the periodic flush retries, so a down collector is not hit per line.
+      if (this.buffer.length >= this.maxBufferSize && !this.failing) {
         void this.flush();
       }
     }

@@ -75,6 +75,13 @@ working call, so no working integration breaks.
   Flushes run one at a time: a shutdown flush waits for a periodic or
   buffer-full forward that is still on the wire, and resends its records if it
   failed, instead of reporting success on the buffer that forward had emptied.
+  At most one forward is on the wire and one flush waits behind it; every other
+  caller shares that flush, so a slow or failing collector costs two requests,
+  not one per log line. After a failed forward, a full buffer waits for the
+  10-second periodic flush instead of retrying at once. Each forward times out
+  after 10 seconds, so `stop()` cannot hang on the collector. At most 1,000
+  records are held for the collector; beyond that the oldest are dropped and
+  counted in `AgentLogger.droppedCount` (also in the shutdown warning).
 - A path parameter of `.` or `..` throws `WAVE_ERR_VALIDATION` before any
   request. URL-encoding leaves dot segments as they are, so
   `/v1/streams/../status` would have reached `/v1/status` with the same key.

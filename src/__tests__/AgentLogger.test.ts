@@ -156,4 +156,88 @@ describe('AgentLogger', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('logging past a full buffer while a forward hangs queues one flush, not one per line', async () => {
+    let releaseFirst: (r: Response) => void = () => {};
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValue(new Response(null, { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logger = new AgentLogger({ agentName: 'a', level: 'info', forwardUrl: 'https://logs.example.com/ingest', apiKey: 'k' });
+    try {
+      for (let i = 0; i < 400; i++) logger.info(`line ${i}`); // 100 trigger the first forward, 300 more pile up
+      const shutdown = logger.flush(); // shares the flush already waiting
+      releaseFirst(new Response(null, { status: 503 })); // the collector is down
+      expect(await shutdown).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock).toHaveBeenCalledTimes(2); // the hung forward and one retry, not one per queued line
+      const retry = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(retry.logs).toHaveLength(400); // the failed 100 plus the 300 logged meanwhile, in order
+      expect(retry.logs[0].message).toBe('line 0');
+      expect(logger.pendingCount).toBe(400);
+    } finally {
+      logger.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('a queued flush sends everything logged while the earlier forward was on the wire', async () => {
+    let releaseFirst: (r: Response) => void = () => {};
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logger = new AgentLogger({ agentName: 'a', level: 'info', forwardUrl: 'https://logs.example.com/ingest', apiKey: 'k' });
+    try {
+      for (let i = 0; i < 400; i++) logger.info(`line ${i}`);
+      const shutdown = logger.flush();
+      releaseFirst(new Response(null, { status: 202 }));
+      expect(await shutdown).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const second = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(second.logs).toHaveLength(300);
+      expect(logger.pendingCount).toBe(0);
+    } finally {
+      logger.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('a failing collector is not retried per log line, and the buffer stays bounded', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logger = new AgentLogger({ agentName: 'a', level: 'info', forwardUrl: 'https://logs.example.com/ingest', apiKey: 'k' });
+    try {
+      for (let i = 0; i < 100; i++) logger.info(`line ${i}`); // buffer full: one forward, which fails
+      expect(await logger.flush()).toBe(false);
+      const callsAfterFailure = fetchMock.mock.calls.length;
+      for (let i = 100; i < 2_000; i++) logger.info(`line ${i}`);
+      expect(fetchMock.mock.calls.length).toBe(callsAfterFailure); // waits for the periodic flush
+      expect(logger.pendingCount).toBe(1_000);
+      expect(logger.droppedCount).toBe(1_000);
+
+      fetchMock.mockResolvedValue(new Response(null, { status: 202 }));
+      expect(await logger.flush()).toBe(true); // the periodic flush recovers
+      const sent = JSON.parse(fetchMock.mock.calls.at(-1)![1].body as string);
+      expect(sent.logs[0].message).toBe('line 1000'); // the newest 1,000 survived
+      expect(sent.logs.at(-1).message).toBe('line 1999');
+    } finally {
+      logger.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('gives every forward a deadline so shutdown cannot hang on the collector', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logger = new AgentLogger({ agentName: 'a', level: 'info', forwardUrl: 'https://logs.example.com/ingest', apiKey: 'k' });
+    try {
+      logger.info('one');
+      expect(await logger.flush()).toBe(true);
+      expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      logger.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
 });

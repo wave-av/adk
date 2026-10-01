@@ -146,7 +146,7 @@ export class AgentRuntime {
         level: 'warn',
         agent: this.agent['config'].agentName,
         message: 'Log forwarding failed at shutdown; records were written to stdout/stderr but not delivered to logForwardUrl',
-        data: { undelivered: this.logger.pendingCount },
+        data: { undelivered: this.logger.pendingCount, dropped: this.logger.droppedCount },
       }) + '\n');
     }
     this.logger.destroy();
