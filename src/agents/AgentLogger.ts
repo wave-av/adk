@@ -46,6 +46,8 @@ export class AgentLogger {
   private readonly buffer: LogEntry[] = [];
   private readonly maxBufferSize = 100;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
+  /** The forward currently on the wire; it never rejects. */
+  private inFlight: Promise<boolean> | null = null;
 
   constructor(config: AgentLoggerConfig) {
     this.config = config;
@@ -81,12 +83,26 @@ export class AgentLogger {
    * Forward buffered records to the collector. Resolves `true` when nothing is
    * left to send, `false` when the collector refused or was unreachable (the
    * records are put back in the buffer for the next flush).
+   *
+   * Flushes run one at a time. A flush that starts while a periodic or
+   * buffer-full forward is still on the wire waits for it first, so it never
+   * reports success just because that forward had already emptied the buffer;
+   * if the earlier forward failed, its re-buffered records are sent again here.
    */
   async flush(): Promise<boolean> {
+    while (this.inFlight) await this.inFlight;
     if (this.buffer.length === 0 || !this.config.forwardUrl) return true;
 
-    const entries = this.buffer.splice(0, this.buffer.length);
+    const forward = this.forward(this.buffer.splice(0, this.buffer.length));
+    this.inFlight = forward;
+    try {
+      return await forward;
+    } finally {
+      if (this.inFlight === forward) this.inFlight = null;
+    }
+  }
 
+  private async forward(entries: LogEntry[]): Promise<boolean> {
     try {
       const response = await fetch(this.config.forwardUrl, {
         method: 'POST',

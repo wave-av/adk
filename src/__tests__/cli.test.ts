@@ -1,13 +1,34 @@
 import { describe, it, expect, vi } from 'vitest';
-import { run, type CliDeps } from '../cli/run';
+import { run, resolveNpx, type CliDeps, type NpxInvocation } from '../cli/run';
 
-const deps = () => {
+const deps = (npx: NpxInvocation | null = { cmd: 'npx', prefixArgs: [] }) => {
   const out: string[] = [];
   const err: string[] = [];
   const spawn = vi.fn((_cmd: string, _args: string[]) => ({ status: 0, error: undefined }));
-  const d: CliDeps = { log: (m) => out.push(m), error: (m) => err.push(m), spawn };
+  const d: CliDeps = { log: (m) => out.push(m), error: (m) => err.push(m), spawn, npx: () => npx };
   return { d, out, err, spawn };
 };
+
+describe('resolveNpx (no shell on any platform)', () => {
+  it('uses npx from PATH on macOS and Linux', () => {
+    expect(resolveNpx('linux', '/usr/bin/node', () => false)).toEqual({ cmd: 'npx', prefixArgs: [] });
+    expect(resolveNpx('darwin', '/opt/homebrew/bin/node', () => false)).toEqual({ cmd: 'npx', prefixArgs: [] });
+  });
+
+  it('runs npm\'s npx-cli.js with node.exe on Windows instead of npx.cmd through a shell', () => {
+    const seen: string[] = [];
+    const inv = resolveNpx('win32', 'C:\\Program Files\\nodejs\\node.exe', (p) => { seen.push(p); return true; });
+    expect(inv).toEqual({
+      cmd: 'C:\\Program Files\\nodejs\\node.exe',
+      prefixArgs: ['C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js'],
+    });
+    expect(seen).toEqual(['C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js']);
+  });
+
+  it('returns null on Windows when npx-cli.js is not next to node.exe', () => {
+    expect(resolveNpx('win32', 'C:\\tools\\node.exe', () => false)).toBeNull();
+  });
+});
 
 describe('wave-adk CLI', () => {
   it.each(['deploy', 'test', 'logs', 'status'])('%s exits 1 with "not implemented" and never fakes success', (cmd) => {
@@ -40,6 +61,22 @@ describe('wave-adk CLI', () => {
     expect(run(['constructor'], d)).toBe(1);
     expect(run(['hasOwnProperty'], d)).toBe(1);
     expect(err.slice(-2).every((m) => m.startsWith('Unknown command'))).toBe(true);
+  });
+
+  it('on Windows spawns node with npx-cli.js first, then the same argv', () => {
+    const { d, spawn } = deps({ cmd: 'C:\\n\\node.exe', prefixArgs: ['C:\\n\\node_modules\\npm\\bin\\npx-cli.js'] });
+    expect(run(['init', 'stream-monitor', 'bot'], d)).toBe(0);
+    expect(spawn.mock.calls[0][0]).toBe('C:\\n\\node.exe');
+    expect(spawn.mock.calls[0][1]).toEqual([
+      'C:\\n\\node_modules\\npm\\bin\\npx-cli.js', '--yes', '@wave-av/create-app@^1', 'bot', '--template', 'stream-monitor',
+    ]);
+  });
+
+  it('when npx cannot be located without a shell, prints the command and exits 1', () => {
+    const { d, err, spawn } = deps(null);
+    expect(run(['init', 'stream-monitor', 'bot'], d)).toBe(1);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(err.join('\n')).toContain('npx --yes @wave-av/create-app@^1 bot --template stream-monitor');
   });
 
   it('propagates the scaffolder exit code', () => {

@@ -72,6 +72,15 @@ working call, so no working integration breaks.
 - `AgentRuntime.stop()` retries the final log flush once and writes a warning
   to stderr, with the undelivered count, when the collector still refuses.
   `AgentLogger.flush()` resolves `true` when delivered and `false` otherwise.
+  Flushes run one at a time: a shutdown flush waits for a periodic or
+  buffer-full forward that is still on the wire, and resends its records if it
+  failed, instead of reporting success on the buffer that forward had emptied.
+- A path parameter of `.` or `..` throws `WAVE_ERR_VALIDATION` before any
+  request. URL-encoding leaves dot segments as they are, so
+  `/v1/streams/../status` would have reached `/v1/status` with the same key.
+- `wave-adk init` never starts a shell. On Windows it runs npm's `npx-cli.js`
+  with the current `node.exe` instead of `npx.cmd` through a shell; when
+  `npx-cli.js` is not next to `node.exe` it prints the command to run and exits 1.
 - `wave-adk init toString` (or any other `Object.prototype` name) is rejected as
   an unknown template, and `wave-adk constructor` as an unknown command.
 

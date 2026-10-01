@@ -102,6 +102,16 @@ describe('validation and keys', () => {
     expect(() => buildPath('/v1/streams/{streamId}', {})).toThrow(/streamId/);
   });
 
+  it('buildPath refuses dot-segment ids, which URL parsing would resolve to another route', () => {
+    for (const streamId of ['.', '..']) {
+      expect(() => buildPath('/v1/streams/{streamId}/status', { streamId })).toThrow(
+        expect.objectContaining({ code: 'WAVE_ERR_VALIDATION' }),
+      );
+    }
+    // Dots inside a real id are fine and stay in their segment.
+    expect(buildPath('/v1/streams/{streamId}/status', { streamId: 'a..b' })).toBe('/v1/streams/a..b/status');
+  });
+
   it('toMCPTools exposes enums and array items', () => {
     const tools = new AgentToolkit({ apiKey: KEY }).toMCPTools();
     const cam = tools.find((t) => t.name === 'wave_control_camera');

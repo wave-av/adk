@@ -8,6 +8,8 @@
  */
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { win32 } from 'node:path';
 
 /** Templates shipped by @wave-av/create-app. */
 export const INIT_TEMPLATES = {
@@ -27,23 +29,44 @@ const NOT_IMPLEMENTED: Record<string, string> = {
 
 const SAFE_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 
+/** How to start npx without a shell: an executable plus the arguments that come before npx's own. */
+export interface NpxInvocation {
+  readonly cmd: string;
+  readonly prefixArgs: readonly string[];
+}
+
+/**
+ * Locate npx so it can be spawned with no shell on every platform.
+ *
+ * On macOS/Linux `npx` is an executable on PATH. On Windows it is `npx.cmd`,
+ * and Node refuses to spawn a .cmd without a shell (CVE-2024-27980). Instead of
+ * turning a shell on, run npm's own `npx-cli.js` with the current Node binary;
+ * the standard Windows Node install ships it next to node.exe. Returns null
+ * when it is not there, and the caller prints the command to run by hand.
+ */
+export function resolveNpx(
+  platform: NodeJS.Platform = process.platform,
+  execPath: string = process.execPath,
+  exists: (path: string) => boolean = existsSync,
+): NpxInvocation | null {
+  if (platform !== 'win32') return { cmd: 'npx', prefixArgs: [] };
+  const cli = win32.join(win32.dirname(execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+  return exists(cli) ? { cmd: execPath, prefixArgs: [cli] } : null;
+}
+
 export interface CliDeps {
   readonly log: (msg: string) => void;
   readonly error: (msg: string) => void;
+  /** Runs `cmd` with an argv array and no shell. */
   readonly spawn: (cmd: string, args: string[]) => Pick<SpawnSyncReturns<Buffer>, 'status' | 'error'>;
+  readonly npx?: () => NpxInvocation | null;
 }
 
 const defaultDeps: CliDeps = {
   log: (m) => console.log(m),
   error: (m) => console.error(m),
-  // No shell on macOS/Linux. On Windows npx is npx.cmd, and Node refuses to
-  // spawn a .cmd without a shell (CVE-2024-27980), so the shell is required
-  // there. It is safe because run() only ever passes fixed strings, an
-  // allowlisted template name and a directory name that matched SAFE_NAME
-  // (letters, digits, ".", "_", "-"), so no argument can carry a shell
-  // metacharacter.
-  // nosemgrep: javascript.lang.security.audit.spawn-shell-true.spawn-shell-true
-  spawn: (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32' }),
+  spawn: (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', shell: false }),
+  npx: () => resolveNpx(),
 };
 
 const isTemplate = (name: string): name is keyof typeof INIT_TEMPLATES => Object.hasOwn(INIT_TEMPLATES, name);
@@ -84,8 +107,13 @@ export function run(argv: string[], deps: CliDeps = defaultDeps): number {
       deps.error(`Invalid project directory "${dir}": use letters, digits, ".", "_" or "-" (no leading "-", no path separators).`);
       return 1;
     }
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const result = deps.spawn(npx, ['--yes', '@wave-av/create-app@^1', dir, '--template', template]);
+    const createArgs = ['--yes', '@wave-av/create-app@^1', dir, '--template', template];
+    const npx = (deps.npx ?? resolveNpx)();
+    if (!npx) {
+      deps.error(`Could not find npm's npx-cli.js next to ${process.execPath}, and wave-adk does not run npx through a shell.\nRun it yourself: npx ${createArgs.join(' ')}`);
+      return 1;
+    }
+    const result = deps.spawn(npx.cmd, [...npx.prefixArgs, ...createArgs]);
     if (result.error) {
       deps.error(`Could not run npx @wave-av/create-app: ${result.error.message}`);
       return 1;

@@ -50,8 +50,9 @@ export const WAVE_ROUTES = {
 export type WaveRouteName = keyof typeof WAVE_ROUTES;
 
 /**
- * Fill a route's `{param}` placeholders. Every value is URL-encoded, so an id
- * can never add path segments or a query string to the request.
+ * Fill a route's `{param}` placeholders. Every value is URL-encoded and dot
+ * segments are refused, so an id can never add or remove path segments or add
+ * a query string to the request.
  */
 export function buildPath(
   path: string,
@@ -70,7 +71,19 @@ export function buildPath(
         `Pass a non-empty ${name} (check that the environment variable holding it is set).`,
       );
     }
-    return encodeURIComponent(String(value));
+    const text = String(value);
+    // encodeURIComponent leaves "." and ".." as they are, and URL parsing
+    // resolves them as dot segments: /v1/streams/../status would be sent to
+    // /v1/status with the same key. No real WAVE id is a dot segment.
+    if (text === '.' || text === '..') {
+      throw new WaveToolError(
+        `Path parameter "${name}" cannot be "${text}" for ${path}. No request was sent.`,
+        'WAVE_ERR_VALIDATION',
+        { field: name, path },
+        `Pass the real ${name}; "." and ".." would change which route the request reaches.`,
+      );
+    }
+    return encodeURIComponent(text);
   });
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
