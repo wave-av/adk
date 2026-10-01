@@ -1,0 +1,62 @@
+src/adapters/langgraph.ts
+  s_13ccc7d9001218::t_87f89640e6687f 111-115,117
+src/__tests__/agents.test.ts
+  s_13ccc7d9001218::t_dc55463bddf300 45,48-81,86,90-104
+  s_13ccc7d9001218::t_19967a69b97f79 7
+  s_13ccc7d9001218::t_96aa56e2a25cbd 105,139-201,239
+  s_13ccc7d9001218::t_83635dc7356990 224-238
+  s_13ccc7d9001218::t_0760f10ce230c2 106
+src/templates/StreamMonitorAgent.ts
+  s_13ccc7d9001218::t_27497c6b53dbd5 69-71
+  s_13ccc7d9001218::t_70d8219899c028 104-111,113
+src/templates/CaptionAgent.ts
+  s_13ccc7d9001218::t_72299de2036931 38,40-41
+  s_13ccc7d9001218::t_0e66c65f27cefb 60-66,69-73,78-80,84-88,93
+CHANGELOG.md
+  s_13ccc7d9001218::t_a8c8901188961d 113
+  s_13ccc7d9001218::t_9dc7d1e3a779e6 58-76,80-84
+  s_13ccc7d9001218::t_cb4a914a775357 85
+src/agents/AgentRuntime.ts
+  s_13ccc7d9001218::t_41601fa401cd4d 139-151
+src/__tests__/AgentRuntime.test.ts
+  s_13ccc7d9001218::t_2f4b6d04b7d7c7 54-69
+src/__tests__/adapters.test.ts
+  s_13ccc7d9001218::t_4f1198fbeb422c 56-63
+src/routes.ts
+  s_13ccc7d9001218::t_99fb57e2415f64 64-71
+  s_13ccc7d9001218::t_a44aa4907004cb 18-19
+src/agents/AgentLogger.ts
+  s_13ccc7d9001218::t_95c7f10d7de7aa 75-86
+  s_13ccc7d9001218::t_cb6ff69f8dca8e 104,111
+src/templates/ClipFactoryAgent.ts
+  s_13ccc7d9001218::t_b17e8406835919 45-50,58-62,64-71,74
+  s_13ccc7d9001218::t_2cf689346ae783 9
+src/__tests__/cli.test.ts
+  s_13ccc7d9001218::t_f0e55973e666fc 35-44
+src/cli/run.ts
+  s_13ccc7d9001218::t_1ee0557ecf182e 39-45,49
+  s_13ccc7d9001218::t_73b0af3419f622 96
+  s_13ccc7d9001218::t_eb9687b9f087a6 79
+  s_13ccc7d9001218::t_0f189bdb39170f 50
+src/agents/WaveAgent.ts
+  s_13ccc7d9001218::t_71a896835c6cbb 155-156
+  s_13ccc7d9001218::t_810db7d289173a 176,180,183-184
+  s_13ccc7d9001218::t_67fc2e4a4739c3 133,136,146-147
+  s_13ccc7d9001218::t_b697591ffb350c 101-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "96176e3d6d5f9cdf2efee0d73f6a8997eacbb826",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
