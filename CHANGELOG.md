@@ -55,8 +55,33 @@ working call, so no working integration breaks.
 - `package.json` `repository.directory` pointed at `packages/adk`, a path this
   repo does not have. `homepage` pointed at a 404 page; it now points at
   https://docs.wave.online/docs/adk.
+- A missing path parameter (for example an unset `WAVE_STREAM_ID`) throws
+  `WAVE_ERR_VALIDATION` before any request, instead of a plain `Error` that was
+  retried for about 7 seconds as if it were a network failure.
+- `ClipFactoryAgent.exportClip()` and the LangGraph `createClipNode` refuse a
+  highlight without `recordingId` (`WAVE_ERR_VALIDATION`, no request) instead of
+  sending the stream id as a recording id.
+- `StreamMonitorAgent` no longer starts its polling timer when `stop()` ran
+  during the first poll. A rejecting `onQualityDrop` callback is reported
+  through `onError` and no longer skips the auto-restart; a rejecting
+  `onHighlight` no longer skips the clip.
+- `CaptionAgent.translateTo()` keeps the source caption job. Each language's
+  captions come from its own job: `getTranscript(id)` reads the source job,
+  `getTranscript(id, { language })` reads that language's translation job when
+  there is one. `jobIdFor(id, language?)` follows the same rule.
+- `AgentRuntime.stop()` retries the final log flush once and writes a warning
+  to stderr, with the undelivered count, when the collector still refuses.
+  `AgentLogger.flush()` resolves `true` when delivered and `false` otherwise.
+- `wave-adk init toString` (or any other `Object.prototype` name) is rejected as
+  an unknown template, and `wave-adk constructor` as an unknown command.
 
 ### Changed
+
+- Retries: 429 is retried for every method (the gateway refused the request
+  before running it). A 5xx or a network error is retried only for GET. A POST
+  is no longer resent after a 5xx or a dropped connection, because the write
+  may already have been applied and the contract has no idempotency key; a
+  retry could create a second clip, caption job or session.
 
 - `start()` registers the agent (`POST /v1/agents`, scope `agents:write`) only
   with `register: true`. 1.0.15 always called `POST /v1/agents/register`, a
@@ -85,7 +110,7 @@ working call, so no working integration breaks.
 ### Added
 
 - `WaveToolError`, `WAVE_ROUTES` and the template result types are exported.
-- `npm test` (vitest, 80+ tests with mocked fetch), `npm run check:exports`,
+- `npm test` (vitest, 95 tests with mocked fetch), `npm run check:exports`,
   `npm run contract:sync` and `npm run contract:live`. The last one runs the
   ADK against the live gateway with a GET-only guard and reports, route by
   route, what the gateway serves.

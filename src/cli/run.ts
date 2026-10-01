@@ -36,8 +36,17 @@ export interface CliDeps {
 const defaultDeps: CliDeps = {
   log: (m) => console.log(m),
   error: (m) => console.error(m),
+  // No shell on macOS/Linux. On Windows npx is npx.cmd, and Node refuses to
+  // spawn a .cmd without a shell (CVE-2024-27980), so the shell is required
+  // there. It is safe because run() only ever passes fixed strings, an
+  // allowlisted template name and a directory name that matched SAFE_NAME
+  // (letters, digits, ".", "_", "-"), so no argument can carry a shell
+  // metacharacter.
+  // nosemgrep: javascript.lang.security.audit.spawn-shell-true.spawn-shell-true
   spawn: (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32' }),
 };
+
+const isTemplate = (name: string): name is keyof typeof INIT_TEMPLATES => Object.hasOwn(INIT_TEMPLATES, name);
 
 export const HELP = `
 WAVE ADK — Agent Developer Kit
@@ -67,7 +76,7 @@ export function run(argv: string[], deps: CliDeps = defaultDeps): number {
   if (command === 'init') {
     const template = rest[0] ?? 'stream-monitor';
     const dir = rest[1] ?? 'my-wave-agent';
-    if (!(template in INIT_TEMPLATES)) {
+    if (!isTemplate(template)) {
       deps.error(`Unknown template: ${template}\nAvailable templates: ${Object.keys(INIT_TEMPLATES).join(', ')}`);
       return 1;
     }
@@ -84,7 +93,7 @@ export function run(argv: string[], deps: CliDeps = defaultDeps): number {
     return result.status ?? 1;
   }
 
-  const reason = NOT_IMPLEMENTED[command];
+  const reason = Object.hasOwn(NOT_IMPLEMENTED, command) ? NOT_IMPLEMENTED[command] : undefined;
   if (reason) {
     deps.error(`wave-adk ${command}: not implemented. ${reason}`);
     return 1;

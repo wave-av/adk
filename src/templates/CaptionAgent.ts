@@ -35,7 +35,10 @@ export interface CaptionDownload {
 export class CaptionAgent extends WaveAgent {
   private readonly streamIds: string[];
   private readonly languages: string[];
+  /** Source-language caption job per stream, created by start(). */
   private readonly jobs = new Map<string, string>();
+  /** Translation jobs per stream, keyed by target language, created by translateTo(). */
+  private readonly translationJobs = new Map<string, Map<string, string>>();
 
   constructor(config: CaptionConfig) {
     super({ ...config, agentType: 'captioner' });
@@ -54,26 +57,40 @@ export class CaptionAgent extends WaveAgent {
     }
   }
 
-  /** Caption job id created for a stream by start() or translateTo(). */
-  jobIdFor(streamId: string): string | undefined {
-    return this.jobs.get(streamId);
+  /**
+   * Caption job id for a stream: the translation job for `language` when
+   * translateTo() created one, otherwise the source job from start().
+   */
+  jobIdFor(streamId: string, language?: string): string | undefined {
+    const translated = language ? this.translationJobs.get(streamId)?.get(language) : undefined;
+    return translated ?? this.jobs.get(streamId);
   }
 
-  /** Start a caption job that translates the stream into `targetLanguage`. Returns the job id. */
+  /**
+   * Start a caption job that translates the stream into `targetLanguage`.
+   * Returns the job id. The source job from start() is kept, so
+   * getTranscript(streamId) still returns the spoken-language captions.
+   */
   async translateTo(streamId: string, targetLanguage: string): Promise<string> {
     const job = await this.apiCall<CaptionJob>('createCaptionJob', {
       body: { videoId: streamId, sourceLanguage: this.languages[0], targetLanguages: [targetLanguage] },
     });
-    this.jobs.set(streamId, job.id);
+    const byLanguage = this.translationJobs.get(streamId) ?? new Map<string, string>();
+    byLanguage.set(targetLanguage, job.id);
+    this.translationJobs.set(streamId, byLanguage);
     return job.id;
   }
 
-  /** Download captions for a stream's caption job (`format` defaults to vtt). */
+  /**
+   * Download captions for a stream (`format` defaults to vtt, `language` to
+   * the spoken language). A language with its own translateTo() job is read
+   * from that job; any other language is read from the source job.
+   */
   async getTranscript(
     streamId: string,
     options: { language?: string; format?: 'srt' | 'vtt' | 'txt' | 'json' } = {},
   ): Promise<CaptionDownload> {
-    const jobId = this.jobs.get(streamId);
+    const jobId = this.jobIdFor(streamId, options.language);
     if (!jobId) {
       throw new WaveToolError(
         `CaptionAgent.getTranscript: no caption job for stream ${streamId}.`,

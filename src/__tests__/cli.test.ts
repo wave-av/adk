@@ -32,6 +32,16 @@ describe('wave-adk CLI', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
+  it('inherited Object.prototype names are neither templates nor commands', () => {
+    const { d, err, spawn } = deps();
+    expect(run(['init', 'toString'], d)).toBe(1);
+    expect(run(['init', 'constructor'], d)).toBe(1);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(run(['constructor'], d)).toBe(1);
+    expect(run(['hasOwnProperty'], d)).toBe(1);
+    expect(err.slice(-2).every((m) => m.startsWith('Unknown command'))).toBe(true);
+  });
+
   it('propagates the scaffolder exit code', () => {
     const { d, spawn } = deps();
     spawn.mockReturnValueOnce({ status: 7, error: undefined });

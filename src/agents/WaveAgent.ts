@@ -98,8 +98,12 @@ export class WaveAgent {
 
   /**
    * Call one route of the WAVE API contract (src/routes.ts). Retries 429 (after
-   * Retry-After), 5xx and network errors with backoff; throws a WaveToolError
-   * carrying the gateway error code and request id for everything else.
+   * Retry-After) for every method, because the gateway refused the request
+   * before running it. Retries 5xx and network errors with backoff only for
+   * GET: for a POST, PATCH or DELETE a 5xx or a dropped connection does not
+   * prove the write was not applied, and the contract has no idempotency key,
+   * so a retry could create a second clip, caption job or session. Throws a
+   * WaveToolError carrying the gateway error code and request id otherwise.
    */
   protected apiCall<T>(route: WaveRouteName, req?: WaveRequest, options?: { maxRetries?: number }): Promise<T>;
   /**
@@ -126,9 +130,10 @@ export class WaveAgent {
     let toolName: string;
     let body: Record<string, unknown> | undefined;
     let maxRetries: number;
+    let method: string;
 
     if (typeof reqOrPath === 'string') {
-      const method = routeOrMethod;
+      method = routeOrMethod.toUpperCase();
       body = bodyOrOptions as Record<string, unknown> | undefined;
       maxRetries = legacyOptions?.maxRetries ?? 3;
       toolName = `${method} ${reqOrPath}`;
@@ -138,7 +143,8 @@ export class WaveAgent {
       const req = reqOrPath ?? {};
       body = req.body;
       maxRetries = (bodyOrOptions as { maxRetries?: number } | undefined)?.maxRetries ?? 3;
-      toolName = `${WAVE_ROUTES[route].method} ${WAVE_ROUTES[route].path}`;
+      method = WAVE_ROUTES[route].method;
+      toolName = `${method} ${WAVE_ROUTES[route].path}`;
       send = () => waveRequest<T>(this.config.baseUrl, this.config.apiKey, route, {
         ...req,
         headers: { ...agentHeaders, ...req.headers },
@@ -146,6 +152,8 @@ export class WaveAgent {
     }
 
     let lastError: Error = new Error('Max retries exceeded');
+    // Only a read is safe to resend after an answer we cannot trust (5xx) or no answer at all.
+    const idempotent = method === 'GET' || method === 'HEAD';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const startTime = Date.now();
@@ -165,14 +173,15 @@ export class WaveAgent {
             await this.sleep(Math.min(Math.max(retryAfter, 1), 60) * 1000);
             continue;
           }
-          if (status >= 500) {
+          if (status >= 500 && idempotent) {
             await this.sleep(Math.min(1000 * 2 ** attempt, 10_000));
             continue;
           }
-          break; // 4xx, validation, missing key: retrying cannot help
+          break; // 4xx, validation, missing key, or a write that may have been applied
         }
 
-        // Network error — retry with backoff
+        // Network error: retry a read with backoff; a write may have reached the server.
+        if (!idempotent) break;
         await this.sleep(Math.min(1000 * 2 ** attempt, 10_000));
       }
     }

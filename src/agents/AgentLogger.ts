@@ -72,8 +72,18 @@ export class AgentLogger {
     this.log('error', message, data);
   }
 
-  async flush(): Promise<void> {
-    if (this.buffer.length === 0 || !this.config.forwardUrl) return;
+  /** Records buffered for the collector and not yet delivered. */
+  get pendingCount(): number {
+    return this.buffer.length;
+  }
+
+  /**
+   * Forward buffered records to the collector. Resolves `true` when nothing is
+   * left to send, `false` when the collector refused or was unreachable (the
+   * records are put back in the buffer for the next flush).
+   */
+  async flush(): Promise<boolean> {
+    if (this.buffer.length === 0 || !this.config.forwardUrl) return true;
 
     const entries = this.buffer.splice(0, this.buffer.length);
 
@@ -91,12 +101,14 @@ export class AgentLogger {
       if (!response.ok) {
         throw new Error(`log forward failed: HTTP ${response.status}`);
       }
+      return true;
     } catch {
       // Re-add entries on failure (drop oldest if buffer is full)
       const remaining = this.maxBufferSize - this.buffer.length;
       if (remaining > 0) {
         this.buffer.unshift(...entries.slice(-remaining));
       }
+      return false;
     }
   }
 

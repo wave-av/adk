@@ -53,6 +53,14 @@ describe('LangGraph adapter', () => {
     expect(calls[0].body).toMatchObject({ source: 'rec_1', in: '2s', out: '8s' });
   });
 
+  it('createClipNode refuses to send a stream id as a recording id', async () => {
+    const { fn } = stubFetch();
+    const { createClipNode } = await import('../adapters/langgraph');
+    const out = await createClipNode({ apiKey: 'test-key' })({ streamId: 'stream_1', clipStart: 2, clipEnd: 8 });
+    expect(out.error).toMatch(/recordingId is required/);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it('createStreamMonitorNode returns an async function', async () => {
     const { createStreamMonitorNode } = await import('../adapters/langgraph');
     const node = createStreamMonitorNode({

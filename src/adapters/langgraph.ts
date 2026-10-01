@@ -108,8 +108,13 @@ export function createClipNode(config: {
       return { ...state, error: 'wave_create_clip tool not found' };
     }
 
+    // POST /v1/clips cuts from a recording; a stream id is not a recording id.
+    if (typeof state.recordingId !== 'string' || state.recordingId === '') {
+      return { ...state, error: 'createClipNode: state.recordingId is required (POST /v1/clips cuts from a recording, not a live stream)' };
+    }
+
     const clip = await clipTool.handler({
-      recordingId: (state.recordingId ?? state.streamId) as string,
+      recordingId: state.recordingId,
       startTime: state.clipStart as number,
       endTime: state.clipEnd as number,
     });

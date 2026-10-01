@@ -6,6 +6,7 @@
  */
 
 import { WaveAgent, type WaveAgentConfig } from '../agents/WaveAgent';
+import { WaveToolError } from '../errors';
 import type { ClipHighlight } from '../types';
 
 interface ClipFactoryConfig extends Omit<WaveAgentConfig, 'agentType'> {
@@ -41,7 +42,12 @@ export class ClipFactoryAgent extends WaveAgent {
     for (const streamId of this.streamIds) {
       this.on(`stream.${streamId}.highlight`, async (event) => {
         const highlight = event as unknown as ClipHighlight;
-        await this.onHighlight?.(highlight);
+        try {
+          await this.onHighlight?.(highlight);
+        } catch (callbackError) {
+          // Report the application callback failure; still cut the clip.
+          this.config.onError(callbackError instanceof Error ? callbackError : new Error(String(callbackError)));
+        }
         if (highlight.confidence >= this.minConfidence) {
           await this.exportClip(highlight);
         }
@@ -49,10 +55,23 @@ export class ClipFactoryAgent extends WaveAgent {
     }
   }
 
+  /**
+   * Cut a clip from the highlight's recording. `POST /v1/clips` takes a
+   * recording id as `source`; a live stream id is not one, so a highlight
+   * without `recordingId` is refused before any request.
+   */
   async exportClip(highlight: ClipHighlight): Promise<string> {
+    if (!highlight.recordingId) {
+      throw new WaveToolError(
+        `ClipFactoryAgent.exportClip: highlight on stream ${highlight.streamId} has no recordingId. No request was sent.`,
+        'WAVE_ERR_VALIDATION',
+        { field: 'recordingId', streamId: highlight.streamId },
+        'POST /v1/clips cuts from a recording; pass the recording id of the stream\'s recording as highlight.recordingId.',
+      );
+    }
     const clip = await this.apiCall<ClipCreateResponse>('createClip', {
       body: {
-        source: highlight.recordingId ?? highlight.streamId,
+        source: highlight.recordingId,
         sourceType: 'recording_id',
         in: `${highlight.startTime}s`,
         out: `${highlight.endTime}s`,

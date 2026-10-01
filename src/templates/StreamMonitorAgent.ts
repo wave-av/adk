@@ -66,6 +66,9 @@ export class StreamMonitorAgent extends WaveAgent {
       }
     };
     await poll();
+    // A stream.status handler may have called stop() during the first poll;
+    // a stopped agent must not start polling (or remediating) again.
+    if (!this.isRunning) return;
     this.pollingTimer = setInterval(() => void poll(), this.pollingIntervalMs);
   }
 
@@ -98,9 +101,16 @@ export class StreamMonitorAgent extends WaveAgent {
         };
 
         await this.emit('quality.drop', alert as unknown as Record<string, unknown>);
-        await this.onQualityDrop?.(alert);
+        try {
+          await this.onQualityDrop?.(alert);
+        } catch (callbackError) {
+          // An application callback failure is reported, but it must not skip
+          // the restart: the offline status is already recorded, so a later
+          // poll would never retry it.
+          this.config.onError(callbackError instanceof Error ? callbackError : new Error(String(callbackError)));
+        }
 
-        if (this.autoRemediate) {
+        if (this.autoRemediate && this.isRunning) {
           await this.apiCall('startStream', { params: { streamId } });
           await this.emit('stream.restarted', { streamId, reason: 'Auto-remediation by StreamMonitorAgent' });
         }

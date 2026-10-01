@@ -15,6 +15,8 @@
  * ADK sends its own fields plus an `action` discriminator until it does.
  */
 
+import { WaveToolError } from './errors';
+
 export interface WaveRoute {
   readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   /** Full gateway path template, including the `/v1` server prefix. */
@@ -59,7 +61,14 @@ export function buildPath(
   const filled = path.replace(/\{(\w+)\}/g, (_, name: string) => {
     const value = params[name];
     if (value === undefined || value === '') {
-      throw new Error(`Missing path parameter "${name}" for ${path}`);
+      // A typed validation error, so callers do not mistake it for a network
+      // failure and retry; no request is sent.
+      throw new WaveToolError(
+        `Missing path parameter "${name}" for ${path}. No request was sent.`,
+        'WAVE_ERR_VALIDATION',
+        { field: name, path },
+        `Pass a non-empty ${name} (check that the environment variable holding it is set).`,
+      );
     }
     return encodeURIComponent(String(value));
   });

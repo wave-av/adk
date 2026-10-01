@@ -136,8 +136,19 @@ export class AgentRuntime {
 
     this.logger.info('Agent runtime stopped');
 
-    // Flush logs, then stop the logger's auto-flush timer
-    await this.logger.flush();
+    // Flush logs (one retry), then stop the logger's auto-flush timer. If the
+    // collector still refuses, say so on stderr: the records were written to
+    // stdout/stderr already, but they never reached the collector.
+    const delivered = (await this.logger.flush()) || (await this.logger.flush());
+    if (!delivered) {
+      process.stderr.write(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        agent: this.agent['config'].agentName,
+        message: 'Log forwarding failed at shutdown; records were written to stdout/stderr but not delivered to logForwardUrl',
+        data: { undelivered: this.logger.pendingCount },
+      }) + '\n');
+    }
     this.logger.destroy();
   }
 

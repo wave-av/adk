@@ -51,6 +51,22 @@ describe('AgentRuntime', () => {
     expect(health.lastHeartbeat).toBeDefined();
   });
 
+  it('retries the final log flush once and warns on stderr when the collector still refuses', async () => {
+    const stderr = vi.mocked(process.stderr.write);
+    stderr.mockClear();
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 503 }));
+    const r = new AgentRuntime(agent, { healthPort: 0, logForwardUrl: 'https://logs.example.com/ingest' });
+    await r.start();
+    fetchMock.mockClear();
+    await r.stop();
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 200 }));
+    const collectorCalls = fetchMock.mock.calls.filter((c) => String((c as unknown[])[0]).startsWith('https://logs.example.com'));
+    expect(collectorCalls).toHaveLength(2);
+    const warned = stderr.mock.calls.map((c) => String(c[0])).find((line) => line.includes('Log forwarding failed at shutdown'));
+    expect(warned).toBeDefined();
+    expect(JSON.parse(warned as string).data.undelivered).toBeGreaterThan(0);
+  });
+
   it('getLogger returns an AgentLogger instance', () => {
     runtime = new AgentRuntime(agent);
     const logger = runtime.getLogger();
