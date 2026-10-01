@@ -70,15 +70,39 @@ jobs:
             }).catch((e) => { console.error(e); process.exit(1); });
           "
 
-      - name: Hello-world quickstart (live gateway, no mocks)
-        env:
-          WAVE_GATEWAY_API_KEY: ${{ secrets.WAVE_GATEWAY_API_KEY }}
+      - name: Every exports subpath resolves (ESM + CJS) from the installed tarball
         run: |
           set -euo pipefail
-          if [ -z "$WAVE_GATEWAY_API_KEY" ]; then
-            echo "skipped: WAVE_GATEWAY_API_KEY absent (fork or unset)"
+          cp scripts/check-exports.mjs "$RUNNER_TEMP/smoke/check-exports.mjs"
+          cd "$RUNNER_TEMP/smoke"
+          node check-exports.mjs
+
+      # Live steps use a CUSTOMER key (repo secret WAVE_AGENT_KEY), never an
+      # internal gateway key. Both scripts send GET requests only.
+      - name: Hello-world quickstart (live gateway, no mocks)
+        env:
+          WAVE_AGENT_KEY: ${{ secrets.WAVE_AGENT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WAVE_AGENT_KEY" ]; then
+            # Forks never get the secret, so this cannot fail the job. Say so
+            # in the run summary: a green check here proves nothing live.
+            echo "::warning title=Live quickstart smoke skipped::WAVE_AGENT_KEY is not set for this run, so the README quickstart was NOT exercised against the live gateway."
             exit 0
           fi
           cp scripts/smoke-quickstart.mjs "$RUNNER_TEMP/smoke/smoke-quickstart.mjs"
           cd "$RUNNER_TEMP/smoke"
           node smoke-quickstart.mjs
+
+      - name: Live contract report (read-only)
+        env:
+          WAVE_AGENT_KEY: ${{ secrets.WAVE_AGENT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WAVE_AGENT_KEY" ]; then
+            echo "::warning title=Live contract report skipped::WAVE_AGENT_KEY is not set for this run, so no ADK route was checked against the live gateway."
+            exit 0
+          fi
+          cp scripts/live-contract.mjs "$RUNNER_TEMP/smoke/live-contract.mjs"
+          cd "$RUNNER_TEMP/smoke"
+          node live-contract.mjs

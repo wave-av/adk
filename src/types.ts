@@ -35,15 +35,19 @@ export interface AgentWebhookEvent {
 
 export interface StreamQualityAlert {
   readonly streamId: string;
-  readonly metric: 'rebuffering' | 'startup_time' | 'error_rate' | 'bitrate_drop';
+  readonly metric: 'rebuffering' | 'startup_time' | 'error_rate' | 'bitrate_drop' | 'stream_offline';
   readonly severity: 'warning' | 'critical';
   readonly currentValue: number;
   readonly threshold: number;
+  /** Stream status from `GET /v1/streams/{streamId}/status` when the alert fired. */
+  readonly status?: string;
   readonly timestamp: Date;
 }
 
 export interface ClipHighlight {
   readonly streamId: string;
+  /** Recording to cut the clip from (`POST /v1/clips` needs a recording id). Falls back to streamId. */
+  readonly recordingId?: string;
   readonly startTime: number;
   readonly endTime: number;
   readonly confidence: number;
@@ -55,7 +59,8 @@ export interface ModerationFlag {
   readonly messageId: string;
   readonly streamId: string;
   readonly content: string;
-  readonly reason: 'profanity' | 'spam' | 'harassment' | 'self_harm' | 'violence';
+  /** Violation category from `POST /v1/moderate` (e.g. harassment, spam, violence). */
+  readonly reason: 'profanity' | 'spam' | 'harassment' | 'self_harm' | 'violence' | (string & {});
   readonly confidence: number;
   readonly action: 'block' | 'flag' | 'allow';
 }

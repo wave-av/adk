@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { stubFetch } from './helpers';
 
 // Mock fetch for toolkit API calls
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -28,11 +29,36 @@ describe('LangGraph adapter', () => {
     const tools = createLangGraphTools({ apiKey: 'test-key' });
 
     const names = tools.map((t) => t.name);
-    expect(names).toContain('create_stream');
-    expect(names).toContain('monitor_stream');
-    expect(names).toContain('create_clip');
-    expect(names).toContain('switch_camera');
-    expect(names).toContain('moderate_chat');
+    expect(names).toContain('wave_create_stream');
+    expect(names).toContain('wave_monitor_stream');
+    expect(names).toContain('wave_create_clip');
+    expect(names).toContain('wave_switch_camera');
+    expect(names).toContain('wave_moderate_chat');
+  });
+
+  it('createStreamMonitorNode finds its tool and calls the status route (1.0.15 looked up "monitor_stream" and always failed)', async () => {
+    const { calls } = stubFetch(() => ({ body: { stream_id: 'stream_123', status: 'live' } }));
+    const { createStreamMonitorNode } = await import('../adapters/langgraph');
+    const out = await createStreamMonitorNode({ apiKey: 'test-key', streamId: 'stream_123' })({});
+    expect(out.error).toBeUndefined();
+    expect(out.streamHealth).toEqual({ stream_id: 'stream_123', status: 'live' });
+    expect(calls[0].url.pathname).toBe('/v1/streams/stream_123/status');
+  });
+
+  it('createClipNode cuts a clip from state.recordingId', async () => {
+    const { calls } = stubFetch(() => ({ status: 201, body: { ok: true, clipId: 'c1' } }));
+    const { createClipNode } = await import('../adapters/langgraph');
+    const out = await createClipNode({ apiKey: 'test-key' })({ recordingId: 'rec_1', clipStart: 2, clipEnd: 8 });
+    expect(out.error).toBeUndefined();
+    expect(calls[0].body).toMatchObject({ source: 'rec_1', in: '2s', out: '8s' });
+  });
+
+  it('createClipNode refuses to send a stream id as a recording id', async () => {
+    const { fn } = stubFetch();
+    const { createClipNode } = await import('../adapters/langgraph');
+    const out = await createClipNode({ apiKey: 'test-key' })({ streamId: 'stream_1', clipStart: 2, clipEnd: 8 });
+    expect(out.error).toMatch(/recordingId is required/);
+    expect(fn).not.toHaveBeenCalled();
   });
 
   it('createStreamMonitorNode returns an async function', async () => {
@@ -76,6 +102,20 @@ describe('Mastra adapter', () => {
     expect(config.servers.wave).toBeDefined();
     expect(config.servers.wave.command).toBe('npx');
     expect(config.servers.wave.args).toContain('@wave-av/mcp-server');
+  });
+
+  it('createWaveMCPConfig uses the apiKey it is given', async () => {
+    const { createWaveMCPConfig } = await import('../adapters/mastra');
+    expect(createWaveMCPConfig({ apiKey: 'wave_live_passed' }).servers.wave.env.WAVE_API_KEY).toBe('wave_live_passed');
+  });
+});
+
+describe('LiveKit adapter', () => {
+  it('getPlaybackUrl returns the playback URL string from GET /v1/streams/{id}', async () => {
+    const { calls } = stubFetch(() => ({ body: { id: 's1', playback_url: 'https://play.example/s1.m3u8' } }));
+    const { createWaveStreamSource } = await import('../adapters/livekit');
+    await expect(createWaveStreamSource({ apiKey: 'k', streamId: 's1' }).getPlaybackUrl()).resolves.toBe('https://play.example/s1.m3u8');
+    expect(calls[0].url.pathname).toBe('/v1/streams/s1');
   });
 });
 

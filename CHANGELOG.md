@@ -6,7 +6,143 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-No user-facing changes since 1.0.15.
+No user-facing changes since 1.1.0.
+
+## [1.1.0] - 2026-09-30
+
+Minor, not patch: it adds public exports and options, and it reshapes four
+tool inputs to match the WAVE API contract. The old inputs never produced a
+working call, so no working integration breaks.
+
+### Fixed
+
+- Subpath imports work again. 1.0.15 built only `src/index.ts`, so
+  `import { AgentToolkit } from '@wave-av/adk/tools'` (the README quick start)
+  threw `ERR_PACKAGE_PATH_NOT_EXPORTED`. The build now has one tsup entry per
+  subpath, and `exports` restores `./tools`, `./agents`, `./adapters`,
+  `./templates` and `./types` from 1.0.14, plus `./adapters/mastra`,
+  `./adapters/langgraph`, `./adapters/livekit` and `./adapters/kernel`, each in
+  ESM and CJS with types. `npm run check:exports` imports every subpath in
+  both module systems and runs in CI against the packed tarball.
+- Tool handlers throw on gateway errors (#62). `AgentToolkit` returned the
+  gateway's `{ error: ... }` body as a successful result, so an agent never
+  saw a failure. Every non-2xx answer now throws `WaveToolError` with the HTTP
+  status, the gateway code (`ROUTE_NOT_FOUND`, `SCOPE_INSUFFICIENT`, ...), the
+  gateway `request_id`, and a fix.
+- Every tool and template calls an operation in the WAVE API contract
+  (https://gateway.wave.online/openapi.json). 1.0.15 called 21 routes and 18
+  were not in the contract (`/v1/streams/{id}/health`, `/v1/graphics/show`,
+  `/v1/moderation/action`, `/v1/replay/poi`, `/v1/captions/start`, ...). All
+  routes now live in one table, `WAVE_ROUTES` (src/routes.ts), and a contract
+  test fails if any route, or any request a tool or template sends, is missing
+  from the vendored contract snapshot. Path parameters are URL-encoded.
+- The LangGraph nodes found their tools again (`monitor_stream` and
+  `create_clip` were looked up by the wrong names, #59), shipped in a release
+  for the first time.
+- `wave-adk deploy` no longer prints a made-up agent id. `deploy`, `test`,
+  `logs` and `status` exit 1 with "not implemented" until an API operation
+  backs them. `wave-adk init <template> [dir]` scaffolds a real project through
+  `@wave-av/create-app`.
+- A missing key fails fast. `WaveAgent`, `AgentToolkit` and
+  `createWaveStreamSource` throw `WAVE_ERR_MISSING_API_KEY` instead of sending
+  `Authorization: Bearer undefined`.
+- `createWaveMCPConfig({ apiKey })` uses the key it is given.
+- `createWaveStreamSource().getPlaybackUrl()` returns the stream's
+  `playback_url` string from `GET /v1/streams/{streamId}`, not a health object.
+- `AgentLogger` sends the WAVE key only to the WAVE API origin, never to a
+  third-party log collector, and re-buffers logs when the collector answers
+  non-2xx.
+- `package.json` `repository.directory` pointed at `packages/adk`, a path this
+  repo does not have. `homepage` pointed at a 404 page; it now points at
+  https://docs.wave.online/docs/adk.
+- A missing path parameter (for example an unset `WAVE_STREAM_ID`) throws
+  `WAVE_ERR_VALIDATION` before any request, instead of a plain `Error` that was
+  retried for about 7 seconds as if it were a network failure.
+- `ClipFactoryAgent.exportClip()` and the LangGraph `createClipNode` refuse a
+  highlight without `recordingId` (`WAVE_ERR_VALIDATION`, no request) instead of
+  sending the stream id as a recording id.
+- `StreamMonitorAgent` no longer starts its polling timer when `stop()` ran
+  during the first poll. A rejecting `onQualityDrop` callback is reported
+  through `onError` and no longer skips the auto-restart; a rejecting
+  `onHighlight` no longer skips the clip.
+- `CaptionAgent.translateTo()` keeps the source caption job. Each language's
+  captions come from its own job: `getTranscript(id)` reads the source job,
+  `getTranscript(id, { language })` reads that language's translation job when
+  there is one. `jobIdFor(id, language?)` follows the same rule.
+- `AgentRuntime.stop()` retries the final log flush once and writes a warning
+  to stderr, with the undelivered count, when the collector still refuses.
+  `AgentLogger.flush()` resolves `true` when delivered and `false` otherwise.
+  Flushes run one at a time: a shutdown flush waits for a periodic or
+  buffer-full forward that is still on the wire, and resends its records if it
+  failed, instead of reporting success on the buffer that forward had emptied.
+  At most one forward is on the wire and one flush waits behind it; every other
+  caller shares that flush, so a slow or failing collector costs two requests,
+  not one per log line. After a failed forward, a full buffer waits for the
+  10-second periodic flush instead of retrying at once. Each forward times out
+  after 10 seconds, so `stop()` cannot hang on the collector. At most 1,000
+  records are held for the collector; beyond that the oldest are dropped and
+  counted in `AgentLogger.droppedCount`. The first drop in each episode is
+  reported on stderr at once, and `stop()` warns about dropped records even
+  when the collector recovered before shutdown.
+- A path parameter of `.` or `..` throws `WAVE_ERR_VALIDATION` before any
+  request. URL-encoding leaves dot segments as they are, so
+  `/v1/streams/../status` would have reached `/v1/status` with the same key.
+- `wave-adk init` never starts a shell. On Windows it runs npm's `npx-cli.js`
+  with the current `node.exe` instead of `npx.cmd` through a shell; when
+  `npx-cli.js` is not next to `node.exe` it prints the command to run and exits 1.
+- `wave-adk init toString` (or any other `Object.prototype` name) is rejected as
+  an unknown template, and `wave-adk constructor` as an unknown command.
+
+### Changed
+
+- Retries: 429 is retried for every method (the gateway refused the request
+  before running it). A 5xx or a network error is retried only for GET. A POST
+  is no longer resent after a 5xx or a dropped connection, because the write
+  may already have been applied and the contract has no idempotency key; a
+  retry could create a second clip, caption job or session.
+
+- `start()` registers the agent (`POST /v1/agents`, scope `agents:write`) only
+  with `register: true`. 1.0.15 always called `POST /v1/agents/register`, a
+  route outside the contract, so the README quick start failed on its first
+  call. `AgentRuntime` sends platform heartbeats only for a registered agent.
+- Tool inputs follow the contract: `wave_create_clip` takes `recordingId`
+  (`POST /v1/clips` cuts from a recording), `wave_moderate_chat` takes the
+  message `content`, `wave_start_captions` takes `videoId`, and
+  `wave_control_camera` takes a command `type` (`set_zoom`, `recall_preset`,
+  ...). Stream ids are no longer forced to be UUIDs.
+- `StreamMonitorAgent` polls `GET /v1/streams/{streamId}/status`, alerts when
+  a live stream goes idle or ended, and with `autoRemediate` restarts it with
+  `POST /v1/streams/{streamId}/start`. It refuses an empty `streamIds`.
+- `ModerationAgent.moderateMessage()` moderates one message with
+  `POST /v1/moderate`. `blockUser()` and `approveMessage()` throw
+  `WAVE_ERR_NOT_IN_CONTRACT`: the contract has no such operations.
+- `CaptionAgent` creates caption jobs with `POST /v1/captions` and downloads
+  them with `GET /v1/captions/{jobId}/download`.
+- `AgentRuntime` `logForwardUrl` is now the full collector URL. The ADK no
+  longer appends `/v1/agents/logs`, a route the WAVE API does not have.
+- README is regenerated from `.wave/repo.json`. The subpath and CLI
+  capabilities no longer say "planned", the quick start no longer uses a
+  stream id the toolkit rejected, and new sections cover errors, keys and
+  scopes, and what the live gateway serves.
+
+### Added
+
+- `WaveToolError`, `WAVE_ROUTES` and the template result types are exported.
+- `npm test` (vitest, 95 tests with mocked fetch), `npm run check:exports`,
+  `npm run contract:sync` and `npm run contract:live`. The last one runs the
+  ADK against the live gateway with a GET-only guard and reports, route by
+  route, what the gateway serves.
+
+### Known server-side gaps
+
+Measured on 2026-09-30 with `npm run contract:live`: the client sends correct,
+authenticated requests (the authenticated control `GET /v1/billing/usage`
+answers 200), but none of the 16 contract routes the ADK uses is proven served.
+The `/v1/streams` family answers `404 ROUTE_NOT_FOUND` (open contract change
+wave-av/api-spec#111 marks it unrouted); `/v1/clips` and `/v1/captions` answer a prefix-level 402
+that a made-up path under the same prefix also gets; the capability routes answer
+a prefix-level 403 `SCOPE_INSUFFICIENT`. Tools surface each of these as a
+`WaveToolError` with the gateway request id.
 
 ## [1.0.15] - 2026-08-04
 
@@ -54,6 +190,7 @@ No user-facing changes since 1.0.15.
 - Removed unverified marketing claims from brand copy and fixed the community
   URL.
 
-[Unreleased]: https://github.com/wave-av/adk/compare/v1.0.15...HEAD
+[Unreleased]: https://github.com/wave-av/adk/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/wave-av/adk/compare/v1.0.15...v1.1.0
 [1.0.15]: https://github.com/wave-av/adk/compare/v1.0.6...v1.0.15
 [1.0.6]: https://github.com/wave-av/adk/releases/tag/v1.0.6
