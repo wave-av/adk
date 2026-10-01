@@ -1,0 +1,23 @@
+src/__tests__/cli.test.ts
+  s_26dfc559e4d3af::t_eb8a69644dddfd 1-46
+src/cli/index.ts
+  s_26dfc559e4d3af::t_5ab46976a06124 7-11,14,16
+src/cli/run.ts
+  s_26dfc559e4d3af::t_fce2fa40d323ce 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5cab8335e4b7e3eb550637fac38551fcd266cc01",
+  "prompts": {},
+  "sessions": {
+    "s_26dfc559e4d3af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a63c620ee579256e2",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

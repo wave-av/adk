@@ -1,0 +1,19 @@
+src/agents/AgentLogger.ts
+  s_4e7d8de0d577b2::t_e38d761859eddd 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8786deaea0d31dcc0a2ac4e805adb50e2ceb2973",
+  "prompts": {},
+  "sessions": {
+    "s_4e7d8de0d577b2": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0091086eaffeXKuuo7PASxFSPI",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

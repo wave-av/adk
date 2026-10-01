@@ -1,0 +1,42 @@
+src/index.ts
+  s_e2e3e43d0638c5::t_391a2924d5d260 38-53
+src/tools/FleetToolkit.ts
+  s_e2e3e43d0638c5::t_5b44fd19b1d66d 1-179,181-185,187-246
+  s_e2e3e43d0638c5::t_23e61d680e01fb 180,186
+src/tools/AgentToolkit.ts
+  s_e2e3e43d0638c5::t_79dfa079629646 24-30
+  s_e2e3e43d0638c5::t_0784839d1724cc 9
+  s_e2e3e43d0638c5::t_0c788b68beef37 11-13
+  s_e2e3e43d0638c5::t_d02f10270a45bd 153-156
+src/tools/index.ts
+  s_e2e3e43d0638c5::t_a638616f3339be 2-17
+src/tools/PaymentsToolkit.ts
+  s_e2e3e43d0638c5::t_ae6b511cdce39c 1-113
+src/tools/shared.ts
+  s_e2e3e43d0638c5::t_5a55b2c36706ad 1-118
+.wave/repo.json
+  s_e2e3e43d0638c5::t_accde10ad88b7f 92,94-105
+  s_e2e3e43d0638c5::t_86fa67fc33fb10 5
+  s_e2e3e43d0638c5::t_ef58c3cdc590c5 76
+  s_e2e3e43d0638c5::t_738bc416b2fd9c 29-35
+  s_e2e3e43d0638c5::t_6010aa95c7a665 149
+  s_e2e3e43d0638c5::t_58f6bcd97005e0 11-15
+src/tools/DispatchToolkit.ts
+  s_e2e3e43d0638c5::t_e523fbde8b7066 1-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f31bbadf81c999d50b5511c1a30b52d20cb1e21f",
+  "prompts": {},
+  "sessions": {
+    "s_e2e3e43d0638c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c78a7f2-132a-470e-8dae-4f28336b528f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_be40541f6fd98b::t_0f004331d1201b 9-25
+package.json
+  s_be40541f6fd98b::t_8bf3b25617b327 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "34b2a60e48eb33d8f1724ae5870ffeda85307539",
+  "prompts": {},
+  "sessions": {
+    "s_be40541f6fd98b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7c9787b-b0d7-48b3-9805-b7c27c79d626",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
