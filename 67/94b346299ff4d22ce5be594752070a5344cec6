@@ -1,0 +1,21 @@
+.contracts-absent.json
+  s_13ccc7d9001218::t_4abb187252bd63 3
+TESTING.md
+  s_13ccc7d9001218::t_d98ccb2a1264a1 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "6794b346299ff4d22ce5be594752070a5344cec6",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
