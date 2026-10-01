@@ -67,6 +67,24 @@ describe('AgentRuntime', () => {
     expect(JSON.parse(warned as string).data.undelivered).toBeGreaterThan(0);
   });
 
+  it('warns at shutdown about records dropped while the collector was behind, even after it recovered', async () => {
+    const stderr = vi.mocked(process.stderr.write);
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 503 }));
+    const r = new AgentRuntime(agent, { healthPort: 0, logForwardUrl: 'https://logs.example.com/ingest' });
+    await r.start();
+    const logger = r.getLogger();
+    for (let i = 0; i < 100; i++) logger.info(`line ${i}`); // full buffer: one forward, which fails
+    await logger.flush();
+    for (let i = 0; i < 1_200; i++) logger.info(`more ${i}`); // the collector is behind: the oldest are dropped
+    expect(logger.droppedCount).toBeGreaterThan(0);
+    stderr.mockClear();
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 200 })); // the collector recovers
+    await r.stop();
+    const warned = stderr.mock.calls.map((c) => String(c[0])).find((line) => line.includes('dropped records while the collector was behind'));
+    expect(warned).toBeDefined();
+    expect(JSON.parse(warned as string).data).toMatchObject({ undelivered: 0, dropped: logger.droppedCount });
+  });
+
   it('getLogger returns an AgentLogger instance', () => {
     runtime = new AgentRuntime(agent);
     const logger = runtime.getLogger();

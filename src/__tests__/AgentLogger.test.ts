@@ -215,12 +215,20 @@ describe('AgentLogger', () => {
       expect(fetchMock.mock.calls.length).toBe(callsAfterFailure); // waits for the periodic flush
       expect(logger.pendingCount).toBe(1_000);
       expect(logger.droppedCount).toBe(1_000);
+      const dropWarnings = () => stderrSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('Log collector is behind'));
+      expect(dropWarnings()).toHaveLength(1); // reported at once, not per dropped record
 
       fetchMock.mockResolvedValue(new Response(null, { status: 202 }));
       expect(await logger.flush()).toBe(true); // the periodic flush recovers
       const sent = JSON.parse(fetchMock.mock.calls.at(-1)![1].body as string);
       expect(sent.logs[0].message).toBe('line 1000'); // the newest 1,000 survived
       expect(sent.logs.at(-1).message).toBe('line 1999');
+
+      fetchMock.mockResolvedValue(new Response(null, { status: 503 })); // falls behind again: warned again
+      logger.info('again');
+      expect(await logger.flush()).toBe(false);
+      for (let i = 0; i < 1_001; i++) logger.info(`more ${i}`);
+      expect(dropWarnings()).toHaveLength(2);
     } finally {
       logger.destroy();
       vi.unstubAllGlobals();

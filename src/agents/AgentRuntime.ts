@@ -140,13 +140,16 @@ export class AgentRuntime {
     // collector still refuses, say so on stderr: the records were written to
     // stdout/stderr already, but they never reached the collector.
     const delivered = (await this.logger.flush()) || (await this.logger.flush());
-    if (!delivered) {
+    const dropped = this.logger.droppedCount;
+    if (!delivered || dropped > 0) {
       process.stderr.write(JSON.stringify({
         timestamp: new Date().toISOString(),
         level: 'warn',
         agent: this.agent['config'].agentName,
-        message: 'Log forwarding failed at shutdown; records were written to stdout/stderr but not delivered to logForwardUrl',
-        data: { undelivered: this.logger.pendingCount, dropped: this.logger.droppedCount },
+        message: delivered
+          ? 'Log forwarding dropped records while the collector was behind; they were written to stdout/stderr but never reached logForwardUrl'
+          : 'Log forwarding failed at shutdown; records were written to stdout/stderr but not delivered to logForwardUrl',
+        data: { undelivered: this.logger.pendingCount, dropped },
       }) + '\n');
     }
     this.logger.destroy();

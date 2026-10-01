@@ -58,6 +58,8 @@ export class AgentLogger {
   /** The last forward failed: a full buffer waits for the periodic flush instead of retrying at once. */
   private failing = false;
   private dropped = 0;
+  /** A drop warning was written since the last delivered forward. */
+  private dropWarned = false;
 
   constructor(config: AgentLoggerConfig) {
     this.config = config;
@@ -123,6 +125,7 @@ export class AgentLogger {
 
     const sent: Promise<boolean> = this.forward(this.buffer.splice(0, this.buffer.length)).then((ok) => {
       this.failing = !ok;
+      if (ok) this.dropWarned = false; // warn again if the collector falls behind again
       if (this.inFlight === sent) this.inFlight = null;
       return ok;
     });
@@ -155,13 +158,26 @@ export class AgentLogger {
     }
   }
 
-  /** Keep at most `maxPending` records, dropping the oldest. */
+  /**
+   * Keep at most `maxPending` records, dropping the oldest. The first drop in
+   * each episode (until a forward is delivered again) is reported on stderr
+   * right away, so a collector that recovers later does not hide the loss.
+   */
   private trim(): void {
     const excess = this.buffer.length - this.maxPending;
-    if (excess > 0) {
-      this.buffer.splice(0, excess);
-      this.dropped += excess;
-    }
+    if (excess <= 0) return;
+    this.buffer.splice(0, excess);
+    this.dropped += excess;
+    if (this.dropWarned) return;
+    this.dropWarned = true;
+    // Straight to stderr: going through log() would buffer this record too.
+    process.stderr.write(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'warn',
+      agent: this.config.agentName,
+      message: `Log collector is behind; dropping the oldest records beyond ${this.maxPending}. They were written to stdout/stderr but will not reach forwardUrl.`,
+      data: { droppedTotal: this.dropped },
+    }) + '\n');
   }
 
   private sendsWaveKey(): boolean {
