@@ -23,14 +23,35 @@ import { CaptionAgent } from '../templates/CaptionAgent';
 import { createWaveStreamSource } from '../adapters/livekit';
 import { stubFetch, type RecordedCall } from './helpers';
 
-interface Operation { method: string; path: string; operationId: string | null }
+interface BodyShape { properties?: string[]; required?: string[]; additional?: boolean; open?: boolean }
+interface Operation { method: string; path: string; operationId: string | null; body?: BodyShape }
 const snapshot = JSON.parse(
   readFileSync(new URL('../../contract/openapi-operations.json', import.meta.url), 'utf8'),
 ) as { operations: Operation[] };
 
-const templateRegex = (path: string) => new RegExp(`^${path.replace(/\{[^}]+\}/g, '[^/]+')}$`);
+/** Segment-by-segment match of a concrete path against a `{param}` template (no dynamic RegExp). */
+const pathMatches = (template: string, pathname: string) => {
+  const t = template.split('/');
+  const p = pathname.split('/');
+  return t.length === p.length && t.every((seg, i) => (seg.startsWith('{') && seg.endsWith('}') ? p[i] !== '' : seg === p[i]));
+};
 const matchOperation = (method: string, pathname: string) =>
-  snapshot.operations.find((op) => op.method === method && templateRegex(op.path).test(pathname));
+  snapshot.operations.find((op) => op.method === method && pathMatches(op.path, pathname));
+
+/** Routes whose body the contract does not declare yet (src/routes.ts `io: 'undeclared'`). */
+const undeclaredBody = new Set(
+  Object.values(WAVE_ROUTES).filter((r) => r.io === 'undeclared').map((r) => `${r.method} ${r.path}`),
+);
+
+/** Body keys the operation does not declare, and required keys the body leaves out. */
+const bodyViolations = (op: Operation, body: unknown): string[] => {
+  if (undeclaredBody.has(`${op.method} ${op.path}`) || !op.body || op.body.open) return [];
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return ['body is not a JSON object'];
+  const keys = Object.keys(body);
+  const unknown = op.body.additional ? [] : keys.filter((k) => !op.body?.properties?.includes(k)).map((k) => `undeclared field "${k}"`);
+  const missing = (op.body.required ?? []).filter((k) => !keys.includes(k)).map((k) => `missing required "${k}"`);
+  return [...unknown, ...missing];
+};
 
 vi.spyOn(process.stdout, 'write').mockReturnValue(true);
 vi.spyOn(process.stderr, 'write').mockReturnValue(true);
@@ -44,6 +65,16 @@ describe('route table vs contract snapshot', () => {
     expect(op, `${route.method} ${route.path} is not in the WAVE OpenAPI contract`).toBeDefined();
     // operationId when the contract names one; else the capability segment (an unnamed draft operation)
     expect(route.operation).toBe(op?.operationId ?? route.path.split('/')[2]);
+  });
+
+  it('the body check rejects undeclared fields and missing required fields', () => {
+    const clips = snapshot.operations.find((o) => o.operationId === 'createClip');
+    expect(clips?.body?.required).toEqual(['in', 'source']);
+    expect(bodyViolations(clips as Operation, { source: 'rec_1', in: '1s', out: '9s' })).toEqual([]);
+    expect(bodyViolations(clips as Operation, { videoId: 'v', in: '1s' })).toEqual([
+      'undeclared field "videoId"',
+      'missing required "source"',
+    ]);
   });
 
   it('no source file outside routes.ts spells a /v1/ path', () => {
@@ -85,8 +116,13 @@ describe('every request the ADK sends is a contract operation', () => {
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) {
       expect(call.url.origin).toBe('https://api.wave.online');
-      expect(matchOperation(call.method, call.url.pathname), `${call.method} ${call.url.pathname}`).toBeDefined();
+      const op = matchOperation(call.method, call.url.pathname);
+      expect(op, `${call.method} ${call.url.pathname}`).toBeDefined();
       expect(call.headers.authorization).toBe(`Bearer ${KEY}`);
+      // The request body must fit the operation's declared JSON body schema.
+      if (op && call.body !== undefined) {
+        expect(bodyViolations(op, call.body), `${call.method} ${call.url.pathname} body ${JSON.stringify(call.body)}`).toEqual([]);
+      }
     }
   };
 
