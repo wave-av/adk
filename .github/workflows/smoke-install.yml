@@ -85,7 +85,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$WAVE_AGENT_KEY" ]; then
-            echo "skipped: WAVE_AGENT_KEY absent (fork or unset)"
+            # Forks never get the secret, so this cannot fail the job. Say so
+            # in the run summary: a green check here proves nothing live.
+            echo "::warning title=Live quickstart smoke skipped::WAVE_AGENT_KEY is not set for this run, so the README quickstart was NOT exercised against the live gateway."
             exit 0
           fi
           cp scripts/smoke-quickstart.mjs "$RUNNER_TEMP/smoke/smoke-quickstart.mjs"
@@ -98,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$WAVE_AGENT_KEY" ]; then
-            echo "skipped: WAVE_AGENT_KEY absent (fork or unset)"
+            echo "::warning title=Live contract report skipped::WAVE_AGENT_KEY is not set for this run, so no ADK route was checked against the live gateway."
             exit 0
           fi
           cp scripts/live-contract.mjs "$RUNNER_TEMP/smoke/live-contract.mjs"
