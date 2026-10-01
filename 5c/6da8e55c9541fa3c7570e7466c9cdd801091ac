@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_13ccc7d9001218::t_da7dbf07e08488 84-86
+src/__tests__/AgentLogger.test.ts
+  s_13ccc7d9001218::t_1e440cbf862bb0 218-219,226-231
+src/agents/AgentLogger.ts
+  s_13ccc7d9001218::t_944fd517662191 161-165,168-180
+  s_13ccc7d9001218::t_5984c949cd9c3f 61-62
+  s_13ccc7d9001218::t_67eb87184b0798 128
+src/agents/AgentRuntime.ts
+  s_13ccc7d9001218::t_2427dae2ae260e 143-144,149-152
+src/__tests__/AgentRuntime.test.ts
+  s_13ccc7d9001218::t_1b85a8b076e405 70-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5c6da8e55c9541fa3c7570e7466c9cdd801091ac",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
