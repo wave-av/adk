@@ -12,15 +12,19 @@
     { "id": "mcp-toolkit", "does": "AgentToolkit.toMCPTools() exposes 10 MCP tool definitions (wave_create_stream, wave_monitor_stream, wave_create_clip, wave_switch_camera, wave_show_graphic, wave_moderate_chat, wave_start_captions, wave_analyze_quality, wave_mark_highlight, wave_control_camera).", "status": "ga" },
     { "id": "agent-runtime", "does": "AgentRuntime provides an HTTP health server (/health, /ready, /metrics), a 30s heartbeat loop, structured JSON logging, and graceful SIGTERM/SIGINT shutdown.", "status": "ga" },
     { "id": "framework-adapters", "does": "Adapter functions for Mastra (createMastraTools), LangGraph (createLangGraphTools), LiveKit (createLiveKitWaveTools), and Kernel.sh (createKernelTools).", "status": "ga" },
-    { "id": "subpath-exports", "does": "README documents 6 tree-shakeable subpath imports (root, /tools, /agents, /adapters, /templates, /types), but package.json's exports map only declares the root \".\" entry, so the subpaths are not resolvable (dist/ is gitignored build output, not tracked in git).", "status": "planned" },
-    { "id": "cli-binary", "does": "package.json declares a wave-adk CLI bin at ./dist/cli/index.js and the build now compiles src/cli/index.ts (see CHANGELOG Unreleased), but no published release ships the CLI yet.", "status": "planned" }
+    { "id": "subpath-exports", "does": "package.json exports the root plus /tools, /agents, /adapters, /adapters/mastra, /adapters/langgraph, /adapters/livekit, /adapters/kernel, /templates and /types, each built by tsup in ESM and CJS with types; `npm run check:exports` imports every one of them in CI.", "status": "ga", "attestedBy": ["subpath-exports-declared"] },
+    { "id": "cli-binary", "does": "wave-adk CLI at ./dist/cli/index.js: `init` scaffolds a project through @wave-av/create-app; `deploy`, `test`, `logs` and `status` exit 1 with \"not implemented\" until a WAVE API operation backs them.", "status": "preview", "attestedBy": ["cli-bin-declared"] },
+    { "id": "contract-routes", "does": "Every tool and template calls a route from WAVE_ROUTES (src/routes.ts), a contract test checks each one against the vendored WAVE OpenAPI snapshot, and every non-2xx answer throws WaveToolError with the gateway code and request id. Most of those routes are not yet served by the live gateway.", "status": "preview", "attestedBy": ["contract-test", "tool-errors-throw"] }
   ],
   "claims": [
-    { "id": "npm-version-1-0-15", "text": "Published on npm as @wave-av/adk, currently at version 1.0.15.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.0.15\"" } },
+    { "id": "package-version-1-1-0", "text": "package.json version is 1.1.0 (published on npm as @wave-av/adk once the v1.1.0 tag releases it).", "resolver": { "type": "grep", "target": "package.json", "expect": "\"version\": \"1.1.0\"" } },
     { "id": "license-apache-2-0", "text": "License is Apache-2.0.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"license\": \"Apache-2.0\"" } },
     { "id": "lifecycle-beta", "text": "capabilities.json declares lifecycle beta.", "resolver": { "type": "grep", "target": "capabilities.json", "expect": "\"lifecycle\": \"beta\"" } },
-    { "id": "dual-esm-cjs-build", "text": "Built as dual esm/cjs output via tsup.", "resolver": { "type": "grep", "target": "package.json", "expect": "esm,cjs" } },
+    { "id": "dual-esm-cjs-build", "text": "Built as dual esm/cjs output via tsup.", "resolver": { "type": "grep", "target": "tsup.config.ts", "expect": "format: ['esm', 'cjs']" } },
+    { "id": "subpath-exports-declared", "text": "package.json declares per-adapter subpath exports such as ./adapters/mastra.", "resolver": { "type": "grep", "target": "package.json", "expect": "\"./adapters/mastra\"" } },
     { "id": "ten-mcp-tools", "text": "AgentToolkit exposes MCP tool definitions via toMCPTools().", "resolver": { "type": "grep", "target": "src/tools/AgentToolkit.ts", "expect": "toMCPTools" } },
+    { "id": "tool-errors-throw", "text": "Every WAVE API call goes through one request function that throws WaveToolError on a non-2xx answer.", "resolver": { "type": "grep", "target": "src/http.ts", "expect": "throw WaveToolError.fromApiResponse" } },
+    { "id": "contract-test", "text": "A contract test checks every route in WAVE_ROUTES against the vendored WAVE OpenAPI snapshot.", "resolver": { "type": "grep", "target": "src/__tests__/contract.test.ts", "expect": "is a contract operation" } },
     { "id": "heartbeat-30s", "text": "AgentRuntime defaults heartbeatIntervalMs to 30 seconds.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "heartbeatIntervalMs ?? 30_000" } },
     { "id": "graceful-sigterm", "text": "AgentRuntime handles SIGTERM for graceful shutdown.", "resolver": { "type": "grep", "target": "src/agents/AgentRuntime.ts", "expect": "SIGTERM" } },
     { "id": "cli-bin-declared", "text": "package.json declares a wave-adk CLI binary at ./dist/cli/index.js, built from src/cli/index.ts by the tsup build.", "resolver": { "type": "grep", "target": "package.json", "expect": "./dist/cli/index.js" } }
@@ -35,16 +39,60 @@
   ],
   "quickstart": {
     "lang": "typescript",
-    "code": "import { StreamMonitorAgent } from '@wave-av/adk';\n\nconst monitor = new StreamMonitorAgent({\n  apiKey: process.env.WAVE_AGENT_KEY,\n  agentName: 'my-quality-monitor',\n  streamIds: ['stream_abc123'],\n  autoRemediate: true,\n  onQualityDrop: async (alert) => {\n    console.log(`Quality drop on ${alert.streamId}: ${alert.metric}`);\n  },\n});\n\nawait monitor.start();"
+    "code": "import { StreamMonitorAgent } from '@wave-av/adk';\n\nconst monitor = new StreamMonitorAgent({\n  apiKey: process.env.WAVE_AGENT_KEY!,      // a wave_live_* key from https://console.wave.online\n  agentName: 'my-quality-monitor',\n  streamIds: [process.env.WAVE_STREAM_ID!], // the id returned when you created the stream\n  onQualityDrop: async (alert) => {\n    console.log(`${alert.streamId} went ${alert.status} (${alert.metric})`);\n  },\n  onError: (err) => console.error(err.message),\n});\n\nawait monitor.start(); // polls GET /v1/streams/{streamId}/status every 30s"
   },
   "mcp": { "tool": "AgentToolkit.toMCPTools", "transport": "stdio" },
   "links": {
     "npm": "https://www.npmjs.com/package/@wave-av/adk",
-    "homepage": "https://wave.online/developers/adk",
+    "homepage": "https://docs.wave.online/docs/adk",
     "github": "https://github.com/wave-av/adk",
     "community": "https://github.com/wave-av/adk/discussions"
   },
   "sections": [
+    {
+      "kind": "prose",
+      "heading": "Registration",
+      "body": "`start()` does not register the agent with the platform unless you pass `register: true`, which needs a key with the `agents:write` scope. Without it, the quick start makes one kind of call: `GET /v1/streams/{streamId}/status`."
+    },
+    {
+      "kind": "prose",
+      "heading": "Errors",
+      "body": "Every WAVE API call either resolves with the parsed response or throws a `WaveToolError`. A gateway error is never returned as a result. A missing key throws `WAVE_ERR_MISSING_API_KEY` in the constructor, and bad tool input throws `WAVE_ERR_VALIDATION`, both before any request is sent."
+    },
+    {
+      "kind": "code",
+      "heading": "Errors — handling a WaveToolError",
+      "lang": "typescript",
+      "body": "import { AgentToolkit, WaveToolError } from '@wave-av/adk/tools';\n\ntry {\n  await new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY! })\n    .findTool('wave_monitor_stream')\n    .handler({ streamId: process.env.WAVE_STREAM_ID! });\n} catch (err) {\n  if (err instanceof WaveToolError) {\n    err.status;      // HTTP status, e.g. 404\n    err.gatewayCode; // gateway code, e.g. ROUTE_NOT_FOUND, SCOPE_INSUFFICIENT\n    err.requestId;   // quote this to support\n    err.fix;         // what to do about it\n  }\n}"
+    },
+    {
+      "kind": "prose",
+      "heading": "What the gateway serves today",
+      "body": "Every route the ADK calls is an operation in the WAVE API contract (`WAVE_ROUTES`, checked in CI against https://gateway.wave.online/openapi.json). Whether the live gateway serves each one is a separate question, and the answer changes as WAVE ships. From a clone of this repo, `npm run contract:live` runs the ADK against the live gateway with your own key and reports, route by route, what is served. It sends GET requests only.\n\nMeasured on 2026-09-30: the `/v1/streams` family answers `404 ROUTE_NOT_FOUND`; `/v1/clips` and `/v1/captions` answer a 402 spend-cap check that runs before route resolution (a made-up path under the same prefix gets the same 402); and the capability routes (`/v1/moderate`, `/v1/switcher`, `/v1/graphics-engine`, `/v1/replay`, `/v1/ghost-producer`, `/v1/agents`, `/v1/cameras`) answer `403 SCOPE_INSUFFICIENT` for a key without that scope. The tools surface each answer as a `WaveToolError`."
+    },
+    {
+      "kind": "code",
+      "heading": "Live contract report",
+      "lang": "bash",
+      "body": "npm ci && npm run build\nWAVE_AGENT_KEY=wave_live_... npm run contract:live"
+    },
+    {
+      "kind": "prose",
+      "heading": "Keys and scopes",
+      "body": "The ADK sends the key in the `Authorization: Bearer` header for you. Capability routes need that capability's write scope on the key (for example `switcher:write`); the scope list is at https://gateway.wave.online/.well-known/wave-scopes.json."
+    },
+    {
+      "kind": "table",
+      "heading": "Keys and scopes — capability routes",
+      "columns": ["Used by", "Route", "Scope"],
+      "rows": [
+        ["`register: true`, AgentRuntime heartbeat", "`POST /v1/agents`", "`agents:write`"],
+        ["`wave_switch_camera`, `AutoProducerAgent.switchToSource`", "`POST /v1/switcher`", "`switcher:write`"],
+        ["`wave_show_graphic`, `AutoProducerAgent.showGraphic`", "`POST /v1/graphics-engine`", "`graphics-engine:write`"],
+        ["`AutoProducerAgent.markHighlight`", "`POST /v1/replay`", "`replay:write`"],
+        ["`AutoProducerAgent.start`", "`POST /v1/ghost-producer`", "`ghost-producer:write`"]
+      ]
+    },
     {
       "kind": "prose",
       "heading": "Overview",
@@ -54,7 +102,7 @@
       "kind": "code",
       "heading": "Agent lifecycle",
       "lang": "mermaid",
-      "body": "stateDiagram-v2\n    [*] --> Init: new AgentRuntime(agent)\n    Init --> Starting: runtime.start()\n    Starting --> Running: agent registered + health server up\n    Running --> Running: heartbeat every 30s\n    Running --> Stopping: SIGTERM / SIGINT / runtime.stop()\n    Stopping --> [*]: cleanup + flush logs\n\n    state Running {\n        [*] --> Healthy\n        Healthy --> Degraded: quality drop\n        Degraded --> Healthy: auto-remediate\n        Healthy --> Processing: tool invoked\n        Processing --> Healthy: result returned\n    }"
+      "body": "stateDiagram-v2\n    [*] --> Init: new AgentRuntime(agent)\n    Init --> Starting: runtime.start()\n    Starting --> Running: health server up (+ POST /v1/agents if register: true)\n    Running --> Running: heartbeat every 30s\n    Running --> Stopping: SIGTERM / SIGINT / runtime.stop()\n    Stopping --> [*]: cleanup + flush logs\n\n    state Running {\n        [*] --> Healthy\n        Healthy --> Degraded: stream drops from live\n        Degraded --> Healthy: auto-remediate (restart)\n        Healthy --> Processing: tool invoked\n        Processing --> Healthy: result returned\n    }"
     },
     {
       "kind": "prose",
@@ -64,25 +112,42 @@
     {
       "kind": "prose",
       "heading": "Status",
-      "body": "Beta. The core SDK is real and implemented: 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters all exist as working source in src/, with test files under src/__tests__/ (though no test script or CI gate currently runs them). Two README-advertised surfaces are not yet delivered, however: the 6 tree-shakeable subpath exports (only the root \".\" is declared in package.json's exports map), and the wave-adk CLI binary (the build now compiles src/cli/index.ts and bin points at ./dist/cli/index.js, but no published release includes it yet). Both are marked planned rather than ga to keep this SSOT honest. The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
+      "body": "Beta. 5 agent templates, the 10-tool MCP toolkit, AgentRuntime's health/heartbeat/shutdown lifecycle, and the four framework adapters ship as source in src/, with `npm test` (vitest, mocked fetch) and a contract test run in CI. The subpath exports ship from 1.1.0, and CI imports each one in ESM and CJS. The `wave-adk` CLI ships `init` (delegates to `@wave-av/create-app`); `deploy`, `test`, `logs` and `status` exit 1 with \"not implemented\" until an API operation backs them. The client calls only contract operations; most of them are not yet served by the live gateway (see \"What the gateway serves today\"). The README's '$19/month usage-based pricing' claim is marketing copy with no billing config in this repo to verify it against, so it is omitted from claims here."
     },
     {
       "kind": "table",
       "heading": "Agent templates",
       "columns": ["Template", "What It Does"],
       "rows": [
-        ["`StreamMonitorAgent`", "Watches quality, auto-remediates degradation"],
-        ["`AutoProducerAgent`", "AI-powered live show direction (camera switching, graphics)"],
-        ["`ClipFactoryAgent`", "Detects highlights, auto-creates social clips"],
-        ["`ModerationAgent`", "AI content moderation for chat and video"],
-        ["`CaptionAgent`", "Real-time transcription and multi-language captions"]
+        ["`StreamMonitorAgent`", "Polls stream status, alerts when a live stream drops, and can restart it"],
+        ["`AutoProducerAgent`", "AI-powered live show direction (camera switching, graphics, replay markers)"],
+        ["`ClipFactoryAgent`", "Cuts a clip from a recording for each high-confidence highlight"],
+        ["`ModerationAgent`", "Moderates each chat message and reports flag and block verdicts"],
+        ["`CaptionAgent`", "Starts caption and translation jobs and downloads the captions"]
       ]
     },
     {
       "kind": "code",
       "heading": "MCP tools (10 tools)",
       "lang": "typescript",
-      "body": "import { AgentToolkit } from '@wave-av/adk/tools';\n\nconst toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY });\n\n// Get MCP-compatible tool definitions\nconst tools = toolkit.toMCPTools();\n// → wave_create_stream, wave_monitor_stream, wave_create_clip,\n//   wave_switch_camera, wave_show_graphic, wave_moderate_chat,\n//   wave_start_captions, wave_analyze_quality, wave_mark_highlight,\n//   wave_control_camera"
+      "body": "import { AgentToolkit } from '@wave-av/adk/tools';\n\nconst toolkit = new AgentToolkit({ apiKey: process.env.WAVE_AGENT_KEY! });\n\n// Get MCP-compatible tool definitions\nconst tools = toolkit.toMCPTools();\n// → wave_create_stream, wave_monitor_stream, wave_create_clip,\n//   wave_switch_camera, wave_show_graphic, wave_moderate_chat,\n//   wave_start_captions, wave_analyze_quality, wave_mark_highlight,\n//   wave_control_camera"
+    },
+    {
+      "kind": "table",
+      "heading": "MCP tools — routes",
+      "columns": ["Tool", "Required input", "Route (contract operation)"],
+      "rows": [
+        ["`wave_create_stream`", "`title`", "`POST /v1/streams` (createStream)"],
+        ["`wave_monitor_stream`", "`streamId`", "`GET /v1/streams/{streamId}/status` (getStreamStatus)"],
+        ["`wave_create_clip`", "`recordingId`, `startTime`, `endTime`", "`POST /v1/clips` (createClip)"],
+        ["`wave_switch_camera`", "`switcherId`, `sourceId`", "`POST /v1/switcher` (switcher)"],
+        ["`wave_show_graphic`", "`switcherId`, `templateId`", "`POST /v1/graphics-engine` (graphicsEngine)"],
+        ["`wave_moderate_chat`", "`content`", "`POST /v1/moderate` (moderateContent)"],
+        ["`wave_start_captions`", "`videoId`", "`POST /v1/captions` (createCaptionJob)"],
+        ["`wave_analyze_quality`", "`streamId`", "`GET /v1/streams/{streamId}/analytics` (getStreamAnalytics)"],
+        ["`wave_mark_highlight`", "`streamId`, `label`", "`POST /v1/streams/{streamId}/highlights` (markStreamHighlight)"],
+        ["`wave_control_camera`", "`cameraId`, `type`", "`POST /v1/cameras/{cameraId}/control` (controlCamera)"]
+      ]
     },
     {
       "kind": "prose",
@@ -93,16 +158,16 @@
       "kind": "code",
       "heading": "Agent runtime v2",
       "lang": "typescript",
-      "body": "import { StreamMonitorAgent, AgentRuntime } from '@wave-av/adk';\n\nconst agent = new StreamMonitorAgent({ /* config */ });\nconst runtime = new AgentRuntime(agent, {\n  healthPort: 8080,           // GET /health, /ready, /metrics\n  heartbeatIntervalMs: 30000, // Platform heartbeat\n  logLevel: 'info',           // Structured JSON logs\n});\n\nawait runtime.start(); // Handles SIGTERM/SIGINT gracefully"
+      "body": "import { StreamMonitorAgent, AgentRuntime } from '@wave-av/adk';\n\nconst agent = new StreamMonitorAgent({ /* config */ });\nconst runtime = new AgentRuntime(agent, {\n  healthPort: 8080,           // GET /health, /ready, /metrics\n  heartbeatIntervalMs: 30000, // local heartbeat; also POST /v1/agents when the agent has register: true\n  logLevel: 'info',           // structured JSON logs to stdout\n  // logForwardUrl: process.env.LOG_COLLECTOR_URL, // optional: your collector's full URL\n});\n\nawait runtime.start(); // Handles SIGTERM/SIGINT gracefully"
     },
     {
       "kind": "prose",
-      "heading": "Subpath imports (planned)",
-      "body": "Import only what you need for smaller bundles. Note: only the root `.` entry is currently built into dist/ — the /tools, /agents, /adapters, /templates, and /types subpaths shown below are declared in the README's intended API but not yet resolvable at runtime (see Status; tracked as capability `subpath-exports`, status planned)."
+      "heading": "Subpath imports",
+      "body": "Import only what you need. Every subpath ships in ESM and CJS with types."
     },
     {
       "kind": "code",
-      "heading": "Subpath imports — intended usage",
+      "heading": "Subpath imports — usage",
       "lang": "typescript",
       "body": "// Tools only\nimport { AgentToolkit, WaveToolError } from '@wave-av/adk/tools';\n\n// Agents only\nimport { WaveAgent, AgentRuntime } from '@wave-av/adk/agents';\n\n// Framework adapters only\nimport { createMastraTools } from '@wave-av/adk/adapters';\n\n// Agent templates\nimport { StreamMonitorAgent, ClipFactoryAgent } from '@wave-av/adk/templates';\n\n// Type definitions\nimport type { StreamQualityAlert, ClipHighlight } from '@wave-av/adk/types';"
     },
@@ -110,7 +175,18 @@
       "kind": "code",
       "heading": "Framework adapters usage",
       "lang": "typescript",
-      "body": "// Mastra — native TypeScript, MCP-first\nimport { createMastraTools } from '@wave-av/adk/adapters';\n\n// LangGraph — LangChain state machines\nimport { createLangGraphTools } from '@wave-av/adk/adapters';\n\n// LiveKit Agents — real-time voice/video\nimport { createLiveKitWaveTools } from '@wave-av/adk/adapters';\n\n// Kernel.sh — cloud browser automation\nimport { createKernelTools } from '@wave-av/adk/adapters';"
+      "body": "// Mastra — native TypeScript, MCP-first\nimport { createMastraTools } from '@wave-av/adk/adapters';\n\n// LangGraph — LangChain state machines\nimport { createLangGraphTools } from '@wave-av/adk/adapters';\n\n// LiveKit Agents — real-time voice/video\nimport { createLiveKitWaveTools } from '@wave-av/adk/adapters';\n\n// Kernel.sh — cloud browser automation\nimport { createKernelTools } from '@wave-av/adk/adapters';\n\n// One adapter only\nimport { createWaveMCPConfig } from '@wave-av/adk/adapters/mastra';\nconst mcpConfig = createWaveMCPConfig({ apiKey: process.env.WAVE_AGENT_KEY! });"
+    },
+    {
+      "kind": "prose",
+      "heading": "CLI",
+      "body": "`wave-adk init` scaffolds a project through `@wave-av/create-app`. `deploy`, `test`, `logs` and `status` exit 1 with \"not implemented\": WAVE has no hosted-agent API for them yet. Run your agent with `AgentRuntime` on your own infrastructure."
+    },
+    {
+      "kind": "code",
+      "heading": "CLI — commands",
+      "lang": "bash",
+      "body": "npx wave-adk init stream-monitor my-agent   # runs npx @wave-av/create-app my-agent --template stream-monitor\nnpx wave-adk help"
     },
     {
       "kind": "prose",
@@ -126,12 +202,12 @@
     {
       "kind": "prose",
       "heading": "Why WAVE ADK?",
-      "body": "- **10 MCP tools** — plug into Claude, Cursor, or any MCP client\n- **5 agent templates** — start producing in minutes, not weeks\n- **6 subpath exports** — tree-shake to only what you need (planned — see Status)\n- **Real infrastructure** — not a wrapper, actual video processing\n- **Enterprise-ready** — multi-region architecture, designed for scale\n\n(The README also advertises \"usage-based pricing, plans from $19/month\" — that is marketing copy with no billing config in this repo to verify it against, so it is omitted here per the SSOT grounding law; see Status.)"
+      "body": "- **10 MCP tools** — plug into Claude, Cursor, or any MCP client\n- **5 agent templates** — start producing in minutes, not weeks\n- **10 entry points** — the root plus subpaths (`/tools`, `/agents`, `/adapters`, `/adapters/*`, `/templates`, `/types`), so you import only what you need\n- **Real infrastructure** — not a wrapper, actual video processing\n- **Enterprise-ready** — multi-region architecture, designed for scale\n\n(The README also advertises \"usage-based pricing, plans from $19/month\" — that is marketing copy with no billing config in this repo to verify it against, so it is omitted here per the SSOT grounding law; see Status.)"
     },
     {
       "kind": "prose",
       "heading": "Troubleshooting",
-      "body": "**Module not found with subpath imports** — ensure `\"moduleResolution\": \"node16\"` or `\"nodenext\"` in your `tsconfig.json`.\n\n**ESM required error** — ADK is ESM-first. Add `\"type\": \"module\"` to your `package.json`, or use a dynamic import (see the code sample below). CJS consumers can use `require()` — the package exports `.cjs` files via the `require` condition."
+      "body": "**Module not found with subpath imports** — ensure `\"moduleResolution\": \"node16\"`, `\"nodenext\"` or `\"bundler\"` in your `tsconfig.json`; older `\"node\"` resolution finds the subpath types through `typesVersions`.\n\n**ESM required error** — ADK is ESM-first. Add `\"type\": \"module\"` to your `package.json`, or use a dynamic import (see the code sample below). CJS consumers can use `require()` — the package exports `.cjs` files via the `require` condition."
     },
     {
       "kind": "code",

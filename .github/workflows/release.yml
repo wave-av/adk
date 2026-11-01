@@ -153,6 +153,11 @@ jobs:
           node -e "const m=require('@wave-av/adk'); if(!m||Object.keys(m).length===0){console.error('CJS import empty');process.exit(1);} console.log('CJS ok - exports:',Object.keys(m).length);"
           # ESM import
           node --input-type=module -e "import * as m from '@wave-av/adk'; if(!m||Object.keys(m).length===0){console.error('ESM import empty');process.exit(1);} console.log('ESM ok - exports:',Object.keys(m).length);"
+          # Every "exports" subpath, ESM + CJS. 1.0.15 shipped with only "."
+          # built; this refuses to publish that regression again. Copied here
+          # so its imports resolve the installed tarball, not the checkout.
+          cp "$GITHUB_WORKSPACE/scripts/check-exports.mjs" ./check-exports.mjs
+          node check-exports.mjs
           # The declared bin actually exists in the packed tree. Read the
           # manifest out of node_modules directly: this package has an
           # `exports` map with no "./package.json" entry, so resolving it as a

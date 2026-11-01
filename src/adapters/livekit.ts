@@ -9,6 +9,8 @@
  */
 
 import { AgentToolkit } from '../tools/AgentToolkit';
+import { WaveToolError, assertApiKey } from '../errors';
+import { DEFAULT_BASE_URL, waveRequest } from '../http';
 
 /**
  * Create LiveKit Agent function tools from WAVE AgentToolkit.
@@ -67,16 +69,25 @@ export function createWaveStreamSource(config: {
   apiKey: string;
   baseUrl?: string;
 }) {
+  const apiKey = assertApiKey(config.apiKey, 'createWaveStreamSource');
+  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   return {
     type: 'wave_stream' as const,
     streamId: config.streamId,
-    getPlaybackUrl: async () => {
-      const toolkit = new AgentToolkit({ apiKey: config.apiKey, baseUrl: config.baseUrl });
-      const tools = toolkit.getTools();
-      const playbackTool = tools.find(t => t.name === 'wave_monitor_stream');
-      if (!playbackTool) throw new Error('wave_monitor_stream tool not found');
-      const result = await playbackTool.handler({ streamId: config.streamId });
-      return result;
+    /** The stream's playback URL, from `GET /v1/streams/{streamId}` (contract: getStream). */
+    getPlaybackUrl: async (): Promise<string> => {
+      const stream = await waveRequest<{ playback_url?: string | null }>(baseUrl, apiKey, 'getStream', {
+        params: { streamId: config.streamId },
+      });
+      if (!stream?.playback_url) {
+        throw new WaveToolError(
+          `Stream ${config.streamId} has no playback_url yet.`,
+          'WAVE_ERR_NO_PLAYBACK_URL',
+          { streamId: config.streamId },
+          'Start the stream first; playback_url is set once it has been live.',
+        );
+      }
+      return stream.playback_url;
     },
   };
 }

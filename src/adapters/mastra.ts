@@ -65,18 +65,22 @@ export function createMastraTools(config: { apiKey: string; baseUrl?: string }) 
  * import { createWaveMCPConfig } from '@wave-av/adk/adapters/mastra';
  * import { MCPClient } from '@mastra/mcp';
  *
- * const mcp = new MCPClient(createWaveMCPConfig());
+ * const mcp = new MCPClient(createWaveMCPConfig({ apiKey: process.env.WAVE_AGENT_KEY }));
  * const tools = await mcp.tools();
  * ```
+ *
+ * `apiKey` falls back to `WAVE_AGENT_KEY`, then `WAVE_API_KEY`. `serverPath`
+ * runs a local MCP server build with `node` instead of `npx @wave-av/mcp-server`.
  */
-export function createWaveMCPConfig(_config?: { serverPath?: string }) {
+export function createWaveMCPConfig(config: { apiKey?: string; serverPath?: string } = {}) {
+  const apiKey = config.apiKey ?? process.env.WAVE_AGENT_KEY ?? process.env.WAVE_API_KEY ?? '';
   return {
     servers: {
       wave: {
-        command: 'npx',
-        args: ['@wave-av/mcp-server'],
+        command: config.serverPath ? 'node' : 'npx',
+        args: config.serverPath ? [config.serverPath] : ['@wave-av/mcp-server'],
         env: {
-          WAVE_API_KEY: process.env.WAVE_AGENT_KEY ?? '',
+          WAVE_API_KEY: apiKey,
         },
       },
     },
