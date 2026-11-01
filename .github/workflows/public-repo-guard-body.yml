@@ -1,0 +1,136 @@
+name: public-repo-guard-body
+
+# The other half of public-repo-guard.yml's coverage, deliberately in its OWN
+# workflow file — see the long comment block at the top of public-repo-guard.yml
+# for the incident (wave-av/cli PR 68) that caused the split and why it is a
+# file-level split, not just a job-level one.
+#
+# `guard` (in public-repo-guard.yml) scans the published TREE and produces the
+# REQUIRED check "Secrets + content policy". This job scans a PR/issue/comment
+# BODY, which is just as world-readable and, until this job existed, was scanned
+# by nothing server-side. That gap was real, not theoretical: a PR was blocked
+# for naming a private repo in a config file while the very same name, with more
+# operational detail attached, sat unchallenged in its body.
+#
+# This job's check-run name ("Body content policy") is NOT a required status
+# context in this repo's ruleset, so it can safely trigger on every comment/review
+# event without any risk of masking or wedging the required tree-scan context —
+# that is the entire reason it lives in a separate file from the tree scan.
+#
+# Honest about what it can and cannot do. On a PR this PREVENTS the merge. On an
+# issue or comment the text is already public the moment it posts, so this is
+# detection — it tells us to go redact, fast. Only the client-side pre-write hook
+# can stop that class before publication.
+#
+# Accepted side effect of that detection: on issue/comment events github.sha is
+# the default-branch head, so a leak in an issue or comment surfaces as a red
+# check on main. That is intentional (a leak SHOULD be loud somewhere a human
+# looks) and safe for merges because the branch-protection-required check is
+# `Secrets + content policy`, not this one. Keep it that way: making this name
+# required would let any commenter turn main's checks red at will.
+on:
+  # `edited` matters as much as `opened`: a body can be made to leak long after
+  # the PR is first raised, and until this job covered it, nothing re-scanned it.
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  # Inline review comments on a diff are a SEPARATE event from issue_comment —
+  # without this trigger they are world-readable text that no job ever scans.
+  pull_request_review_comment:
+    types: [created, edited]
+  # A submitted review's top-level body (the free-text field above any inline
+  # comments) is yet another world-readable payload, separate from BOTH comment
+  # events — without this trigger nothing ever scans it.
+  pull_request_review:
+    types: [submitted, edited]
+
+# `pull_request`, deliberately NOT `pull_request_target`: a fork PR must never get
+# a write token or repo secrets just because a gate wanted to read its body. That
+# is also why this job can run the repo's own copy of the scanner directly — with
+# no token and no secrets in the job, PR-supplied code has nothing to steal, and
+# the only thing a PR can do by editing the scanner is fail its own check.
+permissions:
+  contents: read
+
+jobs:
+  body-guard:
+    name: Body content policy
+    concurrency:
+      # Keyed on the specific comment / review / PR / issue rather than github.ref,
+      # because issue events all report the default branch and a ref-keyed group
+      # would let two comments cancel each other, leaving one unscanned. The comment
+      # and review ids come FIRST: those payloads also carry the PR number, and
+      # keying them on the PR would collapse two rapid comments into one group,
+      # dropping a verdict.
+      #
+      # cancel-in-progress is deliberately FALSE. Every version of a body deserves a
+      # verdict, the job is seconds long, and a cancelled check-run lingers on the
+      # commit. Since this check-run name is not required, a lingering cancelled
+      # run here cannot wedge a merge the way the tree scan's could — but a dropped
+      # verdict on a body would still be a real coverage gap, so the same "let it
+      # finish" policy applies.
+      group: public-repo-guard-body-${{ github.event.comment.id || github.event.review.id || github.event.pull_request.number || github.event.issue.number || github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Only the gate's own scripts are needed — no reason to pay for the whole
+          # tree on every comment.
+          sparse-checkout: scripts/public-repo-guard
+          sparse-checkout-cone-mode: false
+          # This job only reads the scripts — never leave the token sitting in
+          # .git/config while repo-supplied scripts execute in the workspace.
+          persist-credentials: false
+
+      # Same rationale as the tree job: body-policy.sh needs a PCRE2-enabled rg,
+      # and Ubuntu's apt package has none.
+      - name: Install ripgrep (pinned + checksum-verified, PCRE2 build)
+        env:
+          RIPGREP_VERSION: "14.1.1"
+          RIPGREP_SHA256: "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
+        run: |
+          if command -v rg >/dev/null && rg --pcre2-version >/dev/null 2>&1; then
+            echo "using preinstalled $(rg --version | head -n1) with PCRE2"; exit 0
+          fi
+          curl -fsSL --proto '=https' --tlsv1.2 -o ripgrep.tar.gz \
+            "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${RIPGREP_SHA256}  ripgrep.tar.gz" | sha256sum -c -
+          tar -xzf ripgrep.tar.gz --strip-components=1 "ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl/rg"
+          sudo install -m 0755 rg /usr/local/bin/rg
+          rm -f rg ripgrep.tar.gz
+          rg --pcre2-version
+
+      # The body is read straight out of the event payload FILE and written to
+      # another file. It is never interpolated into a run: block and never placed
+      # in an environment variable, so shell metacharacters in a hostile PR body
+      # have nothing to act on. jq is preinstalled on the GitHub-hosted images.
+      - name: Materialize the untrusted title/body to a file
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bodyscan"
+          # An UNRECOGNIZED payload shape must fail, never quietly scan nothing and
+          # report a pass. If the event schema ever moves, this job must go red
+          # rather than become a green rubber stamp over an unscanned body.
+          if [ "$(jq -r 'has("pull_request") or has("issue") or has("comment") or has("review")' "$GITHUB_EVENT_PATH")" != "true" ]; then
+            echo "::error title=public-repo-guard-body::Event payload contains no pull_request/issue/comment/review object — refusing to report a pass on an unscanned body."
+            exit 1
+          fi
+          jq -r '[.pull_request.title, .pull_request.body,
+                  .issue.title, .issue.body,
+                  .comment.body, .review.body]
+                 | map(select(. != null)) | join("\n")' \
+            "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/bodyscan/body.txt"
+          echo "scanning $(wc -l < "$RUNNER_TEMP/bodyscan/body.txt") line(s) of body text"
+
+      - name: body policy (PR / issue / comment text)
+        env:
+          # body-policy.sh FAILS CLOSED (exit 2) if this is empty in CI: an unset,
+          # misspelled, or unexposed variable must surface as a red check, never as
+          # a silent skip of the private-repo rule. A repo with deliberately nothing
+          # to guard sets the variable to the literal 'none'.
+          GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
+        run: bash scripts/public-repo-guard/body-policy.sh "$RUNNER_TEMP/bodyscan/body.txt"
