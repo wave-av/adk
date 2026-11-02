@@ -35,6 +35,22 @@ export { CaptionAgent } from './templates/CaptionAgent';
 
 // Agent tools (MCP-compatible)
 export { AgentToolkit, type AgentTool } from './tools/AgentToolkit';
+export { WaveToolError, toMCPToolDefs, readUsage, type MCPToolDef, type WaveUsage } from './tools/shared';
+
+// Fleet product tools — voice, transcribe, captions (gateway-fronted spokes)
+export {
+  FleetToolkit,
+  VoiceResult,
+  type FleetToolkitConfig,
+  type TranscriptResult,
+  type CaptionResult,
+} from './tools/FleetToolkit';
+
+// Model routing (WAVE Dispatch — its own host, not the gateway)
+export { DispatchToolkit, type DispatchToolkitConfig } from './tools/DispatchToolkit';
+
+// Agent-payment rails — x402 / MPP discovery (public, unauthenticated)
+export { PaymentsToolkit, type PaymentsToolkitConfig } from './tools/PaymentsToolkit';
 
 // Framework adapters
 export { createMastraTools, createWaveMCPConfig, createStreamMonitorStep } from './adapters/mastra';
