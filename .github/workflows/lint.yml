@@ -27,3 +27,5 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
+      - name: Secret-scan redaction selftest
+        run: bash scripts/foundation-secret-scan.selftest.sh
